@@ -1,40 +1,32 @@
 import sys
+
 import numpy as np
 import pandas as pd
+import pyqtgraph as pg
 from scipy.signal import find_peaks, windows
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
-    QFrame, QScrollArea, QCheckBox, QButtonGroup, QDialog,
-    QSizePolicy
-)
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QColor, QPainter
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
+    QCheckBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QStyle,
+    QVBoxLayout,
+    QWidget,
+)
 
 
-class PlotFigureCanvas(FigureCanvas):
-    def __init__(self, figure):
-        super().__init__(figure)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setAutoFillBackground(False)
-        self.setContentsMargins(0, 0, 0, 0)
-
-    def _background_color(self):
-        r, g, b, a = self.figure.get_facecolor()
-        return QColor.fromRgbF(r, g, b, a)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.fillRect(event.rect(), self._background_color())
-        painter.end()
-        super().paintEvent(event)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.draw()
+pg.setConfigOptions(antialias=False)
 
 
 class PlotCanvas(QWidget):
@@ -46,6 +38,8 @@ class PlotCanvas(QWidget):
         self.fft_db = None
         self.peak_indices = np.array([], dtype=int)
         self.signal_name = None
+        self.default_x_range = (0.0, 1.0)
+        self.default_y_range = (-1.0, 1.0)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumWidth(0)
@@ -54,7 +48,6 @@ class PlotCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
 
-        # Title bar with signal name and buttons
         title_bar = QHBoxLayout()
         title_bar.setContentsMargins(4, 4, 4, 0)
 
@@ -62,13 +55,15 @@ class PlotCanvas(QWidget):
         title_bar.addWidget(self.title_label)
         title_bar.addStretch()
 
-        expand_btn = QPushButton("⤢")
-        expand_btn.setFixedSize(24, 24)
+        expand_btn = QPushButton()
+        expand_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TitleBarMaxButton))
+        expand_btn.setFixedSize(28, 24)
         expand_btn.setToolTip("Expand plot")
         expand_btn.clicked.connect(self.expand_plot)
 
-        save_btn = QPushButton("💾")
-        save_btn.setFixedSize(24, 24)
+        save_btn = QPushButton()
+        save_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        save_btn.setFixedSize(28, 24)
         save_btn.setToolTip("Save plot as image")
         save_btn.clicked.connect(self.save_plot)
 
@@ -76,16 +71,12 @@ class PlotCanvas(QWidget):
         title_bar.addWidget(save_btn)
         layout.addLayout(title_bar)
 
-        # Canvas
-        self.fig = Figure(constrained_layout=True)
-        self.canvas = PlotFigureCanvas(self.fig)
-        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.canvas.setMinimumWidth(0)
-        self.ax = None
-        layout.addWidget(self.canvas)
-        layout.setStretchFactor(self.canvas, 1)
+        self.plot_widget = self.create_plot_widget(sync_inputs=True)
+        self.plot_item = self.plot_widget.getPlotItem()
+        self.view_box = self.plot_item.getViewBox()
+        layout.addWidget(self.plot_widget)
+        layout.setStretchFactor(self.plot_widget, 1)
 
-        # Axis limit inputs
         axis_bar = QHBoxLayout()
         axis_bar.setSpacing(4)
 
@@ -118,163 +109,146 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(QLabel("to"))
         axis_bar.addWidget(self.y_max_input)
 
-        reset_btn = QPushButton("↺")
-        reset_btn.setFixedWidth(26)
+        reset_btn = QPushButton()
+        reset_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        reset_btn.setFixedSize(28, 24)
         reset_btn.setToolTip("Reset axis limits")
         reset_btn.clicked.connect(self.reset_axis_limits)
         axis_bar.addWidget(reset_btn)
         axis_bar.addStretch()
         layout.addLayout(axis_bar)
 
-        # Scroll and pan
-        self.canvas.mpl_connect("scroll_event", self.on_scroll)
-        self.canvas.mpl_connect("button_press_event", self.on_mouse_press)
-        self.canvas.mpl_connect("button_release_event", self.on_mouse_release)
-        self.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
+    def create_plot_widget(self, sync_inputs):
+        plot_widget = pg.PlotWidget(background="#2a2a2a")
+        plot_widget.setMinimumWidth(0)
+        plot_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        plot_widget.setMenuEnabled(False)
 
-        self._panning = False
-        self._pan_start = None
+        plot_item = plot_widget.getPlotItem()
+        view_box = plot_item.getViewBox()
+        view_box.setMouseMode(pg.ViewBox.PanMode)
+        view_box.setDefaultPadding(0.0)
+        view_box.setBackgroundColor("#1e1e1e")
+
+        if sync_inputs:
+            view_box.sigRangeChanged.connect(self.on_view_range_changed)
+
+        self.configure_plot_item(plot_item, "")
+        return plot_widget
+
+    def configure_plot_item(self, plot_item, title):
+        plot_item.clear()
+        plot_item.hideButtons()
+        plot_item.showGrid(x=True, y=True, alpha=0.25)
+        plot_item.setLabel("bottom", "Frequency (Hz)", color="#ffffff")
+        plot_item.setLabel("left", "Magnitude (dB)", color="#ffffff")
+
+        if title:
+            plot_item.setTitle(f"<span style='color: white; font-size: 14pt'>{title}</span>")
+        else:
+            plot_item.setTitle("")
+
+        for axis_name in ("bottom", "left"):
+            axis = plot_item.getAxis(axis_name)
+            axis.setPen(pg.mkPen("#555555"))
+            axis.setTextPen(pg.mkPen("#ffffff"))
 
     def expand_plot(self):
-        if self.ax is None:
+        if self.freqs is None or self.fft_db is None:
             return
 
         popup = QDialog(self)
-        popup.setWindowTitle(f"FFT — {self.signal_name}")
+        popup.setWindowTitle(f"FFT - {self.signal_name}")
         popup.setMinimumSize(900, 600)
         layout = QVBoxLayout(popup)
 
-        # Create a new larger figure with same data
-        expanded_fig = Figure(constrained_layout=True)
-        expanded_canvas = FigureCanvas(expanded_fig)
-        ax = expanded_fig.add_subplot(111)
-        self.draw_spectrum(ax, expanded_fig, marker_size=6, annotation_fontsize=9)
+        expanded_plot = self.create_plot_widget(sync_inputs=False)
+        x_range, y_range = self.current_ranges()
+        self.populate_plot_widget(
+            expanded_plot,
+            marker_size=12,
+            annotation_fontsize=10,
+            x_range=x_range,
+            y_range=y_range,
+        )
+        layout.addWidget(expanded_plot)
 
-        layout.addWidget(expanded_canvas)
-
-        # Close button
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(popup.close)
         layout.addWidget(close_btn)
 
-        expanded_canvas.draw()
         popup.exec()
 
     def save_plot(self):
-        if self.ax is None:
+        if self.freqs is None or self.fft_db is None:
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Plot",
             f"{self.signal_name}_fft.png",
-            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)",
         )
 
         if file_path:
-            self.fig.savefig(
-                file_path,
-                dpi=150,
-                bbox_inches="tight",
-                facecolor=self.fig.get_facecolor()
-            )
+            self.plot_widget.grab().save(file_path)
             print(f"Saved: {file_path}")
 
-    def on_scroll(self, event):
-        if self.ax is None or event.inaxes != self.ax:
-            return
-        zoom_factor = 1.2
-        x_min, x_max = self.ax.get_xlim()
-        y_min, y_max = self.ax.get_ylim()
-        x_range = x_max - x_min
-        y_range = y_max - y_min
-        x_mouse = event.xdata
-        y_mouse = event.ydata
-        if event.button == "up":
-            new_x_range = x_range / zoom_factor
-            new_y_range = y_range / zoom_factor
-        else:
-            new_x_range = x_range * zoom_factor
-            new_y_range = y_range * zoom_factor
-        ratio_x = (x_mouse - x_min) / x_range
-        ratio_y = (y_mouse - y_min) / y_range
-        self.ax.set_xlim([
-            x_mouse - ratio_x * new_x_range,
-            x_mouse + (1 - ratio_x) * new_x_range
-        ])
-        self.ax.set_ylim([
-            y_mouse - ratio_y * new_y_range,
-            y_mouse + (1 - ratio_y) * new_y_range
-        ])
+    def on_view_range_changed(self, *_):
         self.update_axis_inputs()
-        self.canvas.draw()
-
-    def on_mouse_press(self, event):
-        if self.ax is None or event.inaxes != self.ax:
-            return
-        if event.button == 1:
-            self._panning = True
-            self._pan_start = (event.xdata, event.ydata)
-
-    def on_mouse_release(self, event):
-        self._panning = False
-        self._pan_start = None
-
-    def on_mouse_move(self, event):
-        if not self._panning or self._pan_start is None:
-            return
-        if self.ax is None or event.inaxes != self.ax:
-            return
-        dx = event.xdata - self._pan_start[0]
-        dy = event.ydata - self._pan_start[1]
-        x_min, x_max = self.ax.get_xlim()
-        y_min, y_max = self.ax.get_ylim()
-        self.ax.set_xlim([x_min - dx, x_max - dx])
-        self.ax.set_ylim([y_min - dy, y_max - dy])
-        self.update_axis_inputs()
-        self.canvas.draw()
 
     def apply_axis_limits(self):
-        if self.ax is None:
+        if self.freqs is None:
             return
+
+        range_kwargs = {"padding": 0.0}
+
         try:
             x_min = float(self.x_min_input.text())
             x_max = float(self.x_max_input.text())
-            self.ax.set_xlim([x_min, x_max])
+            if x_min < x_max:
+                range_kwargs["xRange"] = (x_min, x_max)
         except ValueError:
             pass
+
         try:
             y_min = float(self.y_min_input.text())
             y_max = float(self.y_max_input.text())
-            self.ax.set_ylim([y_min, y_max])
+            if y_min < y_max:
+                range_kwargs["yRange"] = (y_min, y_max)
         except ValueError:
             pass
-        self.canvas.draw()
+
+        if len(range_kwargs) == 1:
+            return
+
+        self.view_box.setRange(**range_kwargs)
+        self.update_axis_inputs()
 
     def reset_axis_limits(self):
-        if self.ax is None or self.freqs is None:
+        if self.freqs is None:
             return
-        self.ax.relim()
-        self.ax.set_xlim([self.freqs[0], self.freqs[-1]])
-        self.ax.autoscale_view(scalex=False, scaley=True)
+
+        self.view_box.setRange(
+            xRange=self.default_x_range,
+            yRange=self.default_y_range,
+            padding=0.0,
+        )
         self.update_axis_inputs()
-        self.canvas.draw()
+
+    def current_ranges(self):
+        x_range, y_range = self.view_box.viewRange()
+        return tuple(x_range), tuple(y_range)
 
     def update_axis_inputs(self):
-        if self.ax is None:
+        if self.freqs is None:
             return
-        x_min, x_max = self.ax.get_xlim()
-        y_min, y_max = self.ax.get_ylim()
-        self.x_min_input.setText(f"{x_min:.1f}")
-        self.x_max_input.setText(f"{x_max:.1f}")
-        self.y_min_input.setText(f"{y_min:.1f}")
-        self.y_max_input.setText(f"{y_max:.1f}")
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.ax is not None:
-            self.refresh_spectrum(preserve_limits=True)
-            self.canvas.draw_idle()
+        x_range, y_range = self.current_ranges()
+        self.x_min_input.setText(f"{x_range[0]:.1f}")
+        self.x_max_input.setText(f"{x_range[1]:.1f}")
+        self.y_min_input.setText(f"{y_range[0]:.1f}")
+        self.y_max_input.setText(f"{y_range[1]:.1f}")
 
     def minimumSizeHint(self):
         return QSize(360, 220)
@@ -311,85 +285,77 @@ class PlotCanvas(QWidget):
         ordered = significant[np.argsort(fft_db[significant])][::-1]
         return ordered[:count]
 
-    def draw_spectrum(self, ax, fig, marker_size=5, annotation_fontsize=7):
-        ax.clear()
-        plot_freqs, plot_fft_db = self.get_display_series()
+    def default_y_limits(self):
+        y_min = float(np.min(self.fft_db))
+        y_max = float(np.max(self.fft_db))
+        padding = max((y_max - y_min) * 0.05, 1.0)
+        return (y_min - padding, y_max + padding)
 
-        ax.plot(
-            plot_freqs,
-            plot_fft_db,
-            linewidth=0.8,
-            color="#00bfff",
-            antialiased=False,
-            clip_on=True,
-            solid_capstyle="butt"
+    def peak_label_item(self, idx, font_size, y_offset):
+        label = pg.TextItem(
+            text=f"{self.freqs[idx]:.1f} Hz",
+            color="#ffff00",
+            anchor=(0, 1),
         )
-        ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Magnitude (dB)")
-        ax.set_title(self.signal_name)
-        ax.grid(True, linestyle="--", alpha=0.4)
-        ax.set_facecolor("#1e1e1e")
-        fig.patch.set_facecolor("#2a2a2a")
-        ax.tick_params(colors="white")
-        ax.xaxis.label.set_color("white")
-        ax.yaxis.label.set_color("white")
-        ax.title.set_color("white")
-        ax.spines[:].set_color("#444444")
-        ax.set_xlim(self.freqs[0], self.freqs[-1])
+        font = QFont()
+        font.setPointSize(font_size)
+        label.setFont(font)
+        label.setPos(float(self.freqs[idx]), float(self.fft_db[idx] + y_offset))
+        return label
 
-        for idx in self.peak_indices:
-            ax.annotate(
-                f"{self.freqs[idx]:.1f} Hz",
-                xy=(self.freqs[idx], self.fft_db[idx]),
-                xytext=(5, 5),
-                textcoords="offset points",
-                color="yellow",
-                fontsize=annotation_fontsize
+    def populate_plot_widget(self, plot_widget, marker_size, annotation_fontsize, x_range=None, y_range=None):
+        plot_item = plot_widget.getPlotItem()
+        view_box = plot_item.getViewBox()
+
+        self.configure_plot_item(plot_item, self.signal_name)
+
+        curve = plot_item.plot(
+            self.freqs,
+            self.fft_db,
+            pen=pg.mkPen("#00bfff", width=1),
+        )
+        curve.setClipToView(True)
+        curve.setDownsampling(auto=True, method="peak")
+
+        if self.peak_indices.size:
+            peak_x = self.freqs[self.peak_indices]
+            peak_y = self.fft_db[self.peak_indices]
+            markers = pg.ScatterPlotItem(
+                x=peak_x,
+                y=peak_y,
+                symbol="t",
+                size=marker_size,
+                brush=pg.mkBrush("#ffff00"),
+                pen=pg.mkPen("#ffff00"),
             )
-            ax.plot(self.freqs[idx], self.fft_db[idx], "y^", markersize=marker_size)
+            plot_item.addItem(markers)
 
-    def refresh_spectrum(self, preserve_limits=False):
-        if self.ax is None:
-            return
+            y_offset = max((self.default_y_range[1] - self.default_y_range[0]) * 0.03, 1.5)
+            for idx in self.peak_indices:
+                plot_item.addItem(self.peak_label_item(idx, annotation_fontsize, y_offset))
 
-        x_limits = self.ax.get_xlim()
-        y_limits = self.ax.get_ylim()
-        self.draw_spectrum(self.ax, self.fig)
-        if preserve_limits:
-            self.ax.set_xlim(x_limits)
-            self.ax.set_ylim(y_limits)
+        if x_range is None:
+            x_range = self.default_x_range
+        if y_range is None:
+            y_range = self.default_y_range
 
-    def get_display_series(self):
-        if len(self.freqs) > 2:
-            base_freqs = self.freqs[1:-1]
-            base_fft_db = self.fft_db[1:-1]
-        else:
-            base_freqs = self.freqs
-            base_fft_db = self.fft_db
-
-        canvas_width = max(self.canvas.width(), 1)
-        target_points = max(int(canvas_width * 1.25), 500)
-        if len(base_freqs) <= target_points:
-            return base_freqs, base_fft_db
-
-        step = int(np.ceil(len(base_freqs) / target_points))
-        sampled_indices = np.arange(0, len(base_freqs), step, dtype=int)
-        if sampled_indices[-1] != len(base_freqs) - 1:
-            sampled_indices = np.append(sampled_indices, len(base_freqs) - 1)
-        return base_freqs[sampled_indices], base_fft_db[sampled_indices]
+        view_box.setRange(xRange=x_range, yRange=y_range, padding=0.0)
 
     def plot_fft(self, signal, signal_name, sampling_rate):
         self.sampling_rate = sampling_rate
         self.signal_name = signal_name
         self.title_label.setText(signal_name)
-        self.fig.clear()
-        self.ax = self.fig.add_subplot(111)
         self.freqs, self.fft_db = self.compute_spectrum(signal, sampling_rate)
         self.peak_indices = self.find_dominant_peaks(self.fft_db)
-        self.draw_spectrum(self.ax, self.fig)
+        self.default_x_range = (float(self.freqs[0]), float(self.freqs[-1]))
+        self.default_y_range = self.default_y_limits()
 
+        self.populate_plot_widget(
+            self.plot_widget,
+            marker_size=10,
+            annotation_fontsize=9,
+        )
         self.update_axis_inputs()
-        self.canvas.draw()
 
 
 class MainWindow(QMainWindow):
@@ -411,7 +377,6 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        # --- File Browser Bar ---
         file_bar = QHBoxLayout()
         file_label = QLabel("File:")
         self.file_path_input = QLineEdit()
@@ -424,11 +389,9 @@ class MainWindow(QMainWindow):
         file_bar.addWidget(browse_button)
         main_layout.addLayout(file_bar)
 
-        # --- Two Panel Layout ---
         panels_layout = QHBoxLayout()
         panels_layout.setSpacing(10)
 
-        # Left Panel
         left_panel = QFrame()
         left_panel.setFrameShape(QFrame.Shape.StyledPanel)
         left_panel.setFixedWidth(220)
@@ -470,7 +433,6 @@ class MainWindow(QMainWindow):
         plot_btn.clicked.connect(self.plot_fft)
         left_layout.addWidget(plot_btn)
 
-        # Right Panel
         right_panel = QFrame()
         right_panel.setFrameShape(QFrame.Shape.StyledPanel)
         right_panel.setMinimumWidth(0)
@@ -478,20 +440,20 @@ class MainWindow(QMainWindow):
         self.right_layout.setContentsMargins(8, 8, 8, 8)
         self.right_layout.setSpacing(8)
 
-        # Plot grid area
         self.plot_area = QWidget()
         self.plot_area.setMinimumWidth(0)
         self.plot_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.plot_grid = QVBoxLayout(self.plot_area)
         self.right_layout.addWidget(self.plot_area)
 
-        # Pagination bar
         pagination_layout = QHBoxLayout()
-        self.prev_btn = QPushButton("←")
+        self.prev_btn = QPushButton()
+        self.prev_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack))
         self.prev_btn.clicked.connect(self.prev_page)
         self.page_label = QLabel("Page 1 of 1")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.next_btn = QPushButton("→")
+        self.next_btn = QPushButton()
+        self.next_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward))
         self.next_btn.clicked.connect(self.next_page)
         pagination_layout.addStretch()
         pagination_layout.addWidget(self.prev_btn)
@@ -500,7 +462,6 @@ class MainWindow(QMainWindow):
         pagination_layout.addStretch()
         self.right_layout.addLayout(pagination_layout)
 
-        # Placeholder
         self.plot_placeholder = QLabel("Load a CSV file and select signals to plot")
         self.plot_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_grid.addWidget(self.plot_placeholder)
@@ -600,14 +561,12 @@ class MainWindow(QMainWindow):
         self.render_page()
 
     def clear_layout(self, layout):
-        # First explicitly delete all tracked canvas widgets
         for widget in self.canvas_widgets:
             widget.setParent(None)
             widget.hide()
             widget.deleteLater()
         self.canvas_widgets = []
 
-        # Then clear the layout
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
