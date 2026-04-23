@@ -1,15 +1,40 @@
 import sys
 import numpy as np
 import pandas as pd
-from scipy.signal import windows
+from scipy.signal import find_peaks, windows
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
-    QFrame, QScrollArea, QCheckBox, QButtonGroup, QDialog
+    QFrame, QScrollArea, QCheckBox, QButtonGroup, QDialog,
+    QSizePolicy
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QColor, QPainter
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+
+
+class PlotFigureCanvas(FigureCanvas):
+    def __init__(self, figure):
+        super().__init__(figure)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def _background_color(self):
+        r, g, b, a = self.figure.get_facecolor()
+        return QColor.fromRgbF(r, g, b, a)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), self._background_color())
+        painter.end()
+        super().paintEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.draw()
 
 
 class PlotCanvas(QWidget):
@@ -19,7 +44,11 @@ class PlotCanvas(QWidget):
         self.sampling_rate = None
         self.freqs = None
         self.fft_db = None
+        self.peak_indices = np.array([], dtype=int)
         self.signal_name = None
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(0)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -48,10 +77,13 @@ class PlotCanvas(QWidget):
         layout.addLayout(title_bar)
 
         # Canvas
-        self.fig = Figure(tight_layout=True)
-        self.canvas = FigureCanvas(self.fig)
+        self.fig = Figure(constrained_layout=True)
+        self.canvas = PlotFigureCanvas(self.fig)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.canvas.setMinimumWidth(0)
         self.ax = None
         layout.addWidget(self.canvas)
+        layout.setStretchFactor(self.canvas, 1)
 
         # Axis limit inputs
         axis_bar = QHBoxLayout()
@@ -60,8 +92,8 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(QLabel("X:"))
         self.x_min_input = QLineEdit()
         self.x_max_input = QLineEdit()
-        self.x_min_input.setFixedWidth(60)
-        self.x_max_input.setFixedWidth(60)
+        self.x_min_input.setFixedWidth(56)
+        self.x_max_input.setFixedWidth(56)
         self.x_min_input.setPlaceholderText("min")
         self.x_max_input.setPlaceholderText("max")
         self.x_min_input.returnPressed.connect(self.apply_axis_limits)
@@ -75,8 +107,8 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(QLabel("Y:"))
         self.y_min_input = QLineEdit()
         self.y_max_input = QLineEdit()
-        self.y_min_input.setFixedWidth(60)
-        self.y_max_input.setFixedWidth(60)
+        self.y_min_input.setFixedWidth(56)
+        self.y_max_input.setFixedWidth(56)
         self.y_min_input.setPlaceholderText("min")
         self.y_max_input.setPlaceholderText("max")
         self.y_min_input.returnPressed.connect(self.apply_axis_limits)
@@ -87,7 +119,7 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(self.y_max_input)
 
         reset_btn = QPushButton("↺")
-        reset_btn.setFixedWidth(28)
+        reset_btn.setFixedWidth(26)
         reset_btn.setToolTip("Reset axis limits")
         reset_btn.clicked.connect(self.reset_axis_limits)
         axis_bar.addWidget(reset_btn)
@@ -113,35 +145,10 @@ class PlotCanvas(QWidget):
         layout = QVBoxLayout(popup)
 
         # Create a new larger figure with same data
-        expanded_fig = Figure(tight_layout=True)
+        expanded_fig = Figure(constrained_layout=True)
         expanded_canvas = FigureCanvas(expanded_fig)
         ax = expanded_fig.add_subplot(111)
-
-        ax.plot(self.freqs, self.fft_db, linewidth=0.8, color="#00bfff")
-        ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Magnitude (dB)")
-        ax.set_title(self.signal_name)
-        ax.grid(True, linestyle="--", alpha=0.4)
-        ax.set_facecolor("#1e1e1e")
-        expanded_fig.patch.set_facecolor("#2a2a2a")
-        ax.tick_params(colors="white")
-        ax.xaxis.label.set_color("white")
-        ax.yaxis.label.set_color("white")
-        ax.title.set_color("white")
-        ax.spines[:].set_color("#444444")
-
-        # Re-draw peaks
-        peak_indices = np.argsort(self.fft_db)[-3:][::-1]
-        for idx in peak_indices:
-            ax.annotate(
-                f"{self.freqs[idx]:.1f} Hz",
-                xy=(self.freqs[idx], self.fft_db[idx]),
-                xytext=(5, 5),
-                textcoords="offset points",
-                color="yellow",
-                fontsize=9
-            )
-            ax.plot(self.freqs[idx], self.fft_db[idx], "y^", markersize=6)
+        self.draw_spectrum(ax, expanded_fig, marker_size=6, annotation_fontsize=9)
 
         layout.addWidget(expanded_canvas)
 
@@ -247,9 +254,9 @@ class PlotCanvas(QWidget):
     def reset_axis_limits(self):
         if self.ax is None or self.freqs is None:
             return
-        self.ax.set_xlim([self.freqs[0], self.freqs[-1]])
         self.ax.relim()
-        self.ax.autoscale_view()
+        self.ax.set_xlim([self.freqs[0], self.freqs[-1]])
+        self.ax.autoscale_view(scalex=False, scaley=True)
         self.update_axis_inputs()
         self.canvas.draw()
 
@@ -263,45 +270,123 @@ class PlotCanvas(QWidget):
         self.y_min_input.setText(f"{y_min:.1f}")
         self.y_max_input.setText(f"{y_max:.1f}")
 
-    def plot_fft(self, signal, signal_name, sampling_rate):
-        self.signal_name = signal_name
-        self.title_label.setText(signal_name)
-        self.fig.clear()
-        self.ax = self.fig.add_subplot(111)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.ax is not None:
+            self.refresh_spectrum(preserve_limits=True)
+            self.canvas.draw_idle()
 
-        n = len(signal)
-        window = windows.hann(n)
-        windowed = signal * window
+    def minimumSizeHint(self):
+        return QSize(360, 220)
+
+    def compute_spectrum(self, signal, sampling_rate):
+        samples = np.asarray(signal, dtype=float)
+        if samples.size < 2:
+            raise ValueError("Signal must contain at least two samples")
+
+        centered = samples - np.mean(samples)
+        window = windows.hann(samples.size, sym=False)
+        windowed = centered * window
 
         fft_vals = np.fft.rfft(windowed)
         fft_mag = np.abs(fft_vals)
-        self.fft_db = 20 * np.log10(fft_mag + 1e-10)
-        self.freqs = np.fft.rfftfreq(n, d=1.0 / sampling_rate)
+        fft_db = 20 * np.log10(fft_mag + 1e-10)
+        freqs = np.fft.rfftfreq(samples.size, d=1.0 / sampling_rate)
+        return freqs, fft_db
 
-        self.ax.plot(self.freqs, self.fft_db, linewidth=0.8, color="#00bfff")
-        self.ax.set_xlabel("Frequency (Hz)")
-        self.ax.set_ylabel("Magnitude (dB)")
-        self.ax.set_title(signal_name)
-        self.ax.grid(True, linestyle="--", alpha=0.4)
-        self.ax.set_facecolor("#1e1e1e")
-        self.fig.patch.set_facecolor("#2a2a2a")
-        self.ax.tick_params(colors="white")
-        self.ax.xaxis.label.set_color("white")
-        self.ax.yaxis.label.set_color("white")
-        self.ax.title.set_color("white")
-        self.ax.spines[:].set_color("#444444")
+    def find_dominant_peaks(self, fft_db, count=3):
+        if fft_db is None or len(fft_db) == 0:
+            return np.array([], dtype=int)
 
-        peak_indices = np.argsort(self.fft_db)[-3:][::-1]
-        for idx in peak_indices:
-            self.ax.annotate(
+        peak_indices, _ = find_peaks(fft_db)
+        if peak_indices.size == 0:
+            if len(fft_db) <= 1:
+                return np.array([], dtype=int)
+            candidate_indices = np.arange(1, len(fft_db))
+        else:
+            candidate_indices = peak_indices
+
+        candidate_levels = fft_db[candidate_indices]
+        significant = candidate_indices[candidate_levels >= candidate_levels.max() - 25.0]
+        ordered = significant[np.argsort(fft_db[significant])][::-1]
+        return ordered[:count]
+
+    def draw_spectrum(self, ax, fig, marker_size=5, annotation_fontsize=7):
+        ax.clear()
+        plot_freqs, plot_fft_db = self.get_display_series()
+
+        ax.plot(
+            plot_freqs,
+            plot_fft_db,
+            linewidth=0.8,
+            color="#00bfff",
+            antialiased=False,
+            clip_on=True,
+            solid_capstyle="butt"
+        )
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Magnitude (dB)")
+        ax.set_title(self.signal_name)
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.set_facecolor("#1e1e1e")
+        fig.patch.set_facecolor("#2a2a2a")
+        ax.tick_params(colors="white")
+        ax.xaxis.label.set_color("white")
+        ax.yaxis.label.set_color("white")
+        ax.title.set_color("white")
+        ax.spines[:].set_color("#444444")
+        ax.set_xlim(self.freqs[0], self.freqs[-1])
+
+        for idx in self.peak_indices:
+            ax.annotate(
                 f"{self.freqs[idx]:.1f} Hz",
                 xy=(self.freqs[idx], self.fft_db[idx]),
                 xytext=(5, 5),
                 textcoords="offset points",
                 color="yellow",
-                fontsize=7
+                fontsize=annotation_fontsize
             )
-            self.ax.plot(self.freqs[idx], self.fft_db[idx], "y^", markersize=5)
+            ax.plot(self.freqs[idx], self.fft_db[idx], "y^", markersize=marker_size)
+
+    def refresh_spectrum(self, preserve_limits=False):
+        if self.ax is None:
+            return
+
+        x_limits = self.ax.get_xlim()
+        y_limits = self.ax.get_ylim()
+        self.draw_spectrum(self.ax, self.fig)
+        if preserve_limits:
+            self.ax.set_xlim(x_limits)
+            self.ax.set_ylim(y_limits)
+
+    def get_display_series(self):
+        if len(self.freqs) > 2:
+            base_freqs = self.freqs[1:-1]
+            base_fft_db = self.fft_db[1:-1]
+        else:
+            base_freqs = self.freqs
+            base_fft_db = self.fft_db
+
+        canvas_width = max(self.canvas.width(), 1)
+        target_points = max(int(canvas_width * 1.25), 500)
+        if len(base_freqs) <= target_points:
+            return base_freqs, base_fft_db
+
+        step = int(np.ceil(len(base_freqs) / target_points))
+        sampled_indices = np.arange(0, len(base_freqs), step, dtype=int)
+        if sampled_indices[-1] != len(base_freqs) - 1:
+            sampled_indices = np.append(sampled_indices, len(base_freqs) - 1)
+        return base_freqs[sampled_indices], base_fft_db[sampled_indices]
+
+    def plot_fft(self, signal, signal_name, sampling_rate):
+        self.sampling_rate = sampling_rate
+        self.signal_name = signal_name
+        self.title_label.setText(signal_name)
+        self.fig.clear()
+        self.ax = self.fig.add_subplot(111)
+        self.freqs, self.fft_db = self.compute_spectrum(signal, sampling_rate)
+        self.peak_indices = self.find_dominant_peaks(self.fft_db)
+        self.draw_spectrum(self.ax, self.fig)
 
         self.update_axis_inputs()
         self.canvas.draw()
@@ -317,7 +402,6 @@ class MainWindow(QMainWindow):
         self.current_page = 0
         self.plots_per_page = 4
         self.selected_signals = []
-        self.canvases = []
         self.canvas_widgets = []
 
         central_widget = QWidget()
@@ -389,12 +473,15 @@ class MainWindow(QMainWindow):
         # Right Panel
         right_panel = QFrame()
         right_panel.setFrameShape(QFrame.Shape.StyledPanel)
+        right_panel.setMinimumWidth(0)
         self.right_layout = QVBoxLayout(right_panel)
         self.right_layout.setContentsMargins(8, 8, 8, 8)
         self.right_layout.setSpacing(8)
 
         # Plot grid area
         self.plot_area = QWidget()
+        self.plot_area.setMinimumWidth(0)
+        self.plot_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.plot_grid = QVBoxLayout(self.plot_area)
         self.right_layout.addWidget(self.plot_area)
 
@@ -420,6 +507,7 @@ class MainWindow(QMainWindow):
 
         panels_layout.addWidget(left_panel)
         panels_layout.addWidget(right_panel)
+        panels_layout.setStretch(1, 1)
         main_layout.addLayout(panels_layout)
 
     def browse_file(self):
@@ -432,24 +520,56 @@ class MainWindow(QMainWindow):
 
     def load_csv(self, file_path):
         try:
-            self.df = pd.read_csv(file_path)
-            self.df.columns = self.df.columns.str.strip()
-            time_col = self.df.columns[0]
-            time_values = self.df[time_col].values
-            time_step = time_values[1] - time_values[0]
+            df = pd.read_csv(file_path)
+            df.columns = df.columns.str.strip()
+            if df.shape[1] < 2:
+                raise ValueError("CSV must contain a time column and at least one signal column")
+
+            time_col = df.columns[0]
+            time_values = pd.to_numeric(df[time_col], errors="raise").to_numpy(dtype=float)
+            if len(time_values) < 2:
+                raise ValueError("CSV must contain at least two rows")
+
+            time_deltas = np.diff(time_values)
+            if np.any(~np.isfinite(time_deltas)) or np.any(time_deltas <= 0):
+                raise ValueError("Time column must be strictly increasing")
+
+            time_step = float(np.median(time_deltas))
+            if time_step <= 0:
+                raise ValueError("Time step must be positive")
+
+            self.df = df
             self.sampling_rate = 1.0 / time_step
+            self.reset_analysis_state()
             print(f"Sampling rate detected: {self.sampling_rate} Hz")
             self.populate_signals()
         except Exception as e:
             print(f"Error loading CSV: {e}")
 
+    def reset_analysis_state(self):
+        self.selected_signals = []
+        self.current_page = 0
+        self.clear_layout(self.plot_grid)
+        self.show_placeholder("Load a CSV file and select signals to plot")
+        self.page_label.setText("Page 1 of 1")
+        self.prev_btn.setEnabled(False)
+        self.next_btn.setEnabled(False)
+
     def populate_signals(self):
         for i in reversed(range(self.signal_list_layout.count())):
-            self.signal_list_layout.itemAt(i).widget().deleteLater()
+            widget = self.signal_list_layout.itemAt(i).widget()
+            if widget is not None:
+                widget.deleteLater()
         signal_columns = self.df.columns[1:]
         for col in signal_columns:
             checkbox = QCheckBox(col)
             self.signal_list_layout.addWidget(checkbox)
+
+    def show_placeholder(self, message):
+        placeholder = QLabel(message)
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.plot_grid.addWidget(placeholder)
+        self.plot_placeholder = placeholder
 
     def on_plots_per_page_changed(self, id):
         self.plots_per_page = id
@@ -465,9 +585,16 @@ class MainWindow(QMainWindow):
         return selected
 
     def plot_fft(self):
+        if self.df is None:
+            return
         self.selected_signals = self.get_selected_signals()
         if not self.selected_signals:
             print("No signals selected")
+            self.clear_layout(self.plot_grid)
+            self.show_placeholder("Select at least one signal to plot")
+            self.page_label.setText("Page 1 of 1")
+            self.prev_btn.setEnabled(False)
+            self.next_btn.setEnabled(False)
             return
         self.current_page = 0
         self.render_page()
@@ -505,10 +632,28 @@ class MainWindow(QMainWindow):
     def render_page(self):
         self.clear_layout(self.plot_grid)
 
+        if self.df is None:
+            self.show_placeholder("Load a CSV file and select signals to plot")
+            self.page_label.setText("Page 1 of 1")
+            self.prev_btn.setEnabled(False)
+            self.next_btn.setEnabled(False)
+            return
+
+        available_columns = set(self.df.columns[1:])
+        self.selected_signals = [
+            signal_name for signal_name in self.selected_signals
+            if signal_name in available_columns
+        ]
+
         if not self.selected_signals:
+            self.show_placeholder("Select at least one signal to plot")
+            self.page_label.setText("Page 1 of 1")
+            self.prev_btn.setEnabled(False)
+            self.next_btn.setEnabled(False)
             return
 
         total_pages = max(1, -(-len(self.selected_signals) // self.plots_per_page))
+        self.current_page = min(self.current_page, total_pages - 1)
         self.page_label.setText(f"Page {self.current_page + 1} of {total_pages}")
         self.prev_btn.setEnabled(self.current_page > 0)
         self.next_btn.setEnabled(self.current_page < total_pages - 1)
@@ -522,6 +667,7 @@ class MainWindow(QMainWindow):
         for i, signal_name in enumerate(page_signals):
             if i % cols == 0:
                 row_layout = QHBoxLayout()
+                row_layout.setContentsMargins(0, 0, 0, 0)
                 row_layout.setSpacing(8)
                 self.plot_grid.addLayout(row_layout)
 
@@ -529,10 +675,13 @@ class MainWindow(QMainWindow):
             signal_data = self.df[signal_name].values
             canvas.plot_fft(signal_data, signal_name, self.sampling_rate)
             self.canvas_widgets.append(canvas)
-            row_layout.addWidget(canvas)
+            row_layout.addWidget(canvas, 1)
 
         if len(page_signals) % cols != 0 and row_layout:
-            row_layout.addWidget(QWidget())
+            filler = QWidget()
+            filler.setMinimumWidth(0)
+            filler.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            row_layout.addWidget(filler, 1)
 
     def prev_page(self):
         if self.current_page > 0:
