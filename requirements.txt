@@ -3,3 +3,4 @@ pandas==3.0.2
 scipy==1.17.1
 PyQt6==6.11.0
 pyqtgraph==0.14.0
+QtAwesome==1.4.2
