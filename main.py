@@ -246,6 +246,18 @@ class AppTheme:
             }}
         """
 
+    def file_path_style(self):
+        return f"""
+            QLabel {{
+                color: {color_hex(self.text)};
+                background-color: {color_hex(self.base)};
+                border: 1px solid {color_hex(self.border)};
+                border-radius: 4px;
+                padding-left: 6px;
+                padding-right: 6px;
+            }}
+        """
+
 
 class PlotCanvas(QWidget):
     def __init__(self, parent=None):
@@ -338,7 +350,7 @@ class PlotCanvas(QWidget):
 
     def apply_theme(self, theme):
         self.setStyleSheet(theme.plot_canvas_style())
-        self.expand_btn.setIcon(theme.icon("fa5s.expand"))
+        self.expand_btn.setIcon(theme.icon("fa5s.window-maximize"))
         self.save_btn.setIcon(theme.icon("fa5s.download"))
         self.reset_btn.setIcon(theme.icon("fa5s.undo"))
         for button in (self.expand_btn, self.save_btn, self.reset_btn):
@@ -630,15 +642,21 @@ class MainWindow(QMainWindow):
         # --- File Browser Bar ---
         file_bar = QHBoxLayout()
         file_bar.setContentsMargins(8, 6, 8, 6)
-        file_label = QLabel("File:")
-        self.file_path_input = QLineEdit()
-        self.file_path_input.setPlaceholderText("Browse to a CSV file...")
-        self.file_path_input.setReadOnly(True)
+        self.file_path_label = QLabel("Browse to a CSV file...")
+        self.file_path_label.setMinimumWidth(0)
+        self.file_path_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.file_path_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.file_path_label.setMargin(4)
         self.browse_button = QPushButton("Browse")
         self.browse_button.setFixedHeight(28)
+        self.browse_button.setFixedWidth(72)
         self.browse_button.clicked.connect(self.browse_file)
-        file_bar.addWidget(file_label)
-        file_bar.addWidget(self.file_path_input)
+        file_bar.addWidget(self.file_path_label, 1)
+        file_bar.addSpacing(8)
         file_bar.addWidget(self.browse_button)
         main_layout.addLayout(file_bar)
 
@@ -662,10 +680,25 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
+        signals_header = QWidget()
+        signals_header_layout = QHBoxLayout(signals_header)
+        signals_header_layout.setContentsMargins(8, 6, 4, 6)
+        signals_header_layout.setSpacing(6)
+
         signals_label = QLabel("Signals")
-        signals_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        signals_label.setContentsMargins(8, 6, 8, 6)
-        left_layout.addWidget(signals_label)
+        signals_label.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        )
+
+        self.toggle_all_btn = QPushButton()
+        self.toggle_all_btn.setFixedSize(28, 28)
+        self.toggle_all_btn.setToolTip("Select all signals")
+        self.toggle_all_btn.clicked.connect(self.toggle_all_signals)
+
+        signals_header_layout.addWidget(signals_label)
+        signals_header_layout.addStretch()
+        signals_header_layout.addWidget(self.toggle_all_btn)
+        left_layout.addWidget(signals_header)
 
         self.left_sep_top = QFrame()
         self.left_sep_top.setFrameShape(QFrame.Shape.HLine)
@@ -716,9 +749,6 @@ class MainWindow(QMainWindow):
         top_bar = QHBoxLayout(self.top_bar_widget)
         top_bar.setContentsMargins(8, 6, 8, 6)
         top_bar.setSpacing(6)
-
-        plots_label = QLabel("Plots per page:")
-        top_bar.addWidget(plots_label)
 
         plots_per_page_widget = QWidget()
         plots_per_page_layout = QHBoxLayout(plots_per_page_widget)
@@ -831,6 +861,9 @@ class MainWindow(QMainWindow):
         self.next_btn.setIcon(theme.icon("fa5s.chevron-right"))
         self.browse_button.setStyleSheet(theme.tool_button_style())
         self.plot_btn.setStyleSheet(theme.tool_button_style())
+        self.toggle_all_btn.setStyleSheet(theme.tool_button_style())
+        self.file_path_label.setStyleSheet(theme.file_path_style())
+        self.update_toggle_all_button()
 
         for button in (self.aa_btn, self.prev_btn, self.next_btn):
             button.setStyleSheet(theme.tool_button_style())
@@ -847,7 +880,7 @@ class MainWindow(QMainWindow):
             self, "Open CSV File", "", "CSV Files (*.csv);;All Files (*)"
         )
         if file_path:
-            self.file_path_input.setText(file_path)
+            self.file_path_label.setText(file_path)
             self.load_csv(file_path)
 
     def load_csv(self, file_path):
@@ -889,6 +922,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"Error loading CSV: {e}")
+            self.file_path_label.setText("Browse to a CSV file...")
             self.df = None
             self.sampling_rate = None
             self.clear_signal_list()
@@ -912,13 +946,66 @@ class MainWindow(QMainWindow):
             widget = self.signal_list_layout.itemAt(i).widget()
             if widget is not None:
                 widget.deleteLater()
+        self.update_toggle_all_button()
 
     def populate_signals(self):
         self.clear_signal_list()
         signal_columns = self.df.columns[1:]
         for col in signal_columns:
             checkbox = QCheckBox(col)
+            checkbox.stateChanged.connect(self.update_toggle_all_button)
             self.signal_list_layout.addWidget(checkbox)
+        self.update_toggle_all_button()
+
+    def toggle_all_signals(self):
+        checkboxes = []
+        checked_count = 0
+        for i in range(self.signal_list_layout.count()):
+            checkbox = self.signal_list_layout.itemAt(i).widget()
+            if isinstance(checkbox, QCheckBox):
+                checkboxes.append(checkbox)
+                if checkbox.isChecked():
+                    checked_count += 1
+
+        if not checkboxes:
+            return
+
+        set_checked = checked_count == 0
+        for checkbox in checkboxes:
+            checkbox.setChecked(set_checked)
+
+        self.update_toggle_all_button()
+
+    def update_toggle_all_button(self):
+        if not hasattr(self, "toggle_all_btn"):
+            return
+
+        checkboxes = []
+        checked_count = 0
+        for i in range(self.signal_list_layout.count()):
+            checkbox = self.signal_list_layout.itemAt(i).widget()
+            if isinstance(checkbox, QCheckBox):
+                checkboxes.append(checkbox)
+                if checkbox.isChecked():
+                    checked_count += 1
+
+        if not checkboxes:
+            self.toggle_all_btn.setEnabled(False)
+            self.toggle_all_btn.setIcon(AppTheme.current().icon("fa5s.plus-square"))
+            self.toggle_all_btn.setToolTip("Select all signals")
+            return
+
+        theme = AppTheme.current()
+        self.toggle_all_btn.setEnabled(True)
+        if checked_count == 0:
+            self.toggle_all_btn.setIcon(theme.icon("fa5s.plus-square"))
+            self.toggle_all_btn.setToolTip("Select all signals")
+        elif checked_count == len(checkboxes):
+            self.toggle_all_btn.setIcon(theme.icon("fa5.square"))
+            self.toggle_all_btn.setToolTip("Deselect all signals")
+        else:
+            self.toggle_all_btn.setIcon(theme.icon("fa5s.minus-square"))
+            self.toggle_all_btn.setToolTip("Deselect all signals")
 
     def show_placeholder(self, message):
         placeholder = QLabel(message)
