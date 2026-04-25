@@ -67,54 +67,63 @@ def apply_icon_hover(button, theme, icon_name):
     update_icon()
 
 class AppTheme:
-    def __init__(self, palette):
-        self.is_dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
+    def __init__(self, is_dark):
+        self.is_dark = is_dark
 
-        if self.is_dark:
+        if is_dark:
             self.colors = {
                 "bg": "#1e1e1e",
-                "panel": "#252526",
-                "text": "#ffffff",
-                "muted": "#aaaaaa",
-                "accent": "#44a1ff",
-                "accent_hover": "#3ea6ff",
+                "surface": "#252526",
+                "surface_alt": "#2d2d30",
+                "text_primary": "#ffffff",
+                "text_secondary": "#c8c8c8",
+                "accent": "#0078d4",
+                "accent_hover": "#2893ff",
                 "border": "#3c3c3c",
+                "danger": "#e81123",
+                "success": "#107c10",
             }
         else:
             self.colors = {
-                "bg": "#f5f5f5",
-                "panel": "#ffffff",
-                "text": "#111111",
-                "muted": "#666666",
-                "accent": "#44a1ff",
-                "accent_hover": "#005fa3",
+                "bg": "#f3f3f3",
+                "surface": "#ffffff",
+                "surface_alt": "#f0f0f0",
+                "text_primary": "#1a1a1a",
+                "text_secondary": "#555555",
+                "accent": "#0078d4",
+                "accent_hover": "#005a9e",
                 "border": "#d0d0d0",
+                "danger": "#d13438",
+                "success": "#107c10",
             }
 
         self.accent_text = "#ffffff"
 
-        if self.is_dark:
-            self.plot = {
-                "panel": self.colors["bg"],
-                "background": self.colors["panel"],
-                "text": self.colors["text"],
-                "axis": "#aaaaaa",
-                "grid_alpha": 0.25,
-                "curve": self.colors["accent"],
-                "peak": QColor(self.colors["accent"]).lighter(140).name(),
-            }
-        else:
-            self.plot = {
-                "panel": self.colors["bg"],
-                "background": self.colors["panel"],
-                "text": self.colors["text"],
-                "axis": "#555555",
-                "grid_alpha": 0.2,
+        self.plot = {
+            "panel": self.colors["surface"],
+            "background": self.colors["surface_alt"],
+            "text": self.colors["text_primary"],
+            "axis": self.colors["text_secondary"],
+            "curve": self.colors["accent"],
+            "peak": self.colors["accent_hover"],
+        }
 
-                "curve": QColor(self.colors["accent"]).darker(110).name(),
+        self.fonts = {
+            "title": 13,
+            "label": 11,
+            "small": 9,
+        }
 
-                "peak": QColor(self.colors["accent"]).darker(150).name(),
-            }
+        self.spacing = {
+            "xs": 4,
+            "sm": 8,
+            "md": 12,
+            "lg": 16,
+        }
+
+        self.colors["panel"] = self.colors["surface"]
+        self.colors["text"] = self.colors["text_primary"]
+        self.colors["muted"] = self.colors["text_secondary"]
 
     @classmethod
     def current(cls):
@@ -136,16 +145,20 @@ class AppTheme:
     def button_style(self):
         return f"""
             QPushButton {{
-                color: {self.colors["text"]};
-                background-color: {self.colors["panel"]};
+                color: {self.colors["text_primary"]};
+                background-color: {self.colors["surface"]};
                 border: 1px solid {self.colors["border"]};
                 border-radius: 4px;
-                padding: 4px 10px;
-                padding-left: 12px;
-                padding-right: 12px;
+                padding: {self.spacing["xs"]}px {self.spacing["md"]}px;
             }}
 
             QPushButton:hover {{
+                color: {self.accent_text};
+                background-color: {self.colors["accent"]};
+                border: 1px solid {self.colors["accent"]};
+            }}
+
+            QPushButton:checked {{
                 color: {self.accent_text};
                 background-color: {self.colors["accent"]};
                 border: 1px solid {self.colors["accent"]};
@@ -158,100 +171,84 @@ class AppTheme:
 
     def panel_style(self):
         return f"""
-        QWidget {{
-            background-color: {self.colors["panel"]};
-            color: {self.colors["text"]};
-        }}
+            QWidget {{
+                background-color: {self.colors["surface"]};
+                color: {self.colors["text_primary"]};
+            }}
         """
 
     def main_style(self):
         return f"""
-        QWidget {{
-            background-color: {self.colors["bg"]};
-            color: {self.colors["text"]};
-        }}
+            QWidget {{
+                background-color: {self.colors["bg"]};
+                color: {self.colors["text_primary"]};
+            }}
         """
 
     def checkbox_style(self):
         return f"""
-        QCheckBox {{
-            color: {self.colors["text"]};
-            spacing: 6px;
-        }}
+            QCheckBox {{
+                color: {self.colors["text_primary"]};
+                spacing: {self.spacing["sm"]}px;
+            }}
 
-        QCheckBox::indicator {{
-            width: 14px;
-            height: 14px;
-            border: 1px solid {self.colors["border"]};
-            border-radius: 3px;
-            background-color: {self.colors["panel"]};
-        }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border: 1px solid {self.colors["border"]};
+                border-radius: 3px;
+                background-color: {self.colors["surface_alt"]};
+            }}
 
-        QCheckBox::indicator:checked {{
-            background-color: {self.colors["accent"]};
-            border: 1px solid {self.colors["accent"]};
-        }}
-
-        QCheckBox::indicator:checked:disabled {{
-            background-color: {self.colors["muted"]};
-        }}
+            QCheckBox::indicator:checked {{
+                background-color: {self.colors["accent"]};
+                border: 1px solid {self.colors["accent"]};
+            }}
         """
 
     def input_style(self):
         return f"""
-        QLabel {{
-            color: {self.colors["text"]};
-            background-color: {self.colors["panel"]};
-            border: 1px solid {self.colors["border"]};
-            border-radius: 4px;
-            padding: 4px;
-        }}
+            QLabel {{
+                color: {self.colors["text_primary"]};
+                background-color: {self.colors["surface_alt"]};
+                border: 1px solid {self.colors["border"]};
+                border-radius: 4px;
+                padding: 4px;
+            }}
         """
+    
     def segmented_button_style(self, position):
-        c = self.colors
-
-        if position == "first":
-            radius = "border-top-left-radius: 4px; border-bottom-left-radius: 4px;"
-            border_right = "border-right: none;"
-        elif position == "middle":
-            radius = "border-radius: 0px;"
-            border_right = "border-right: none;"
-        elif position == "last":
-            radius = "border-top-right-radius: 4px; border-bottom-right-radius: 4px;"
-            border_right = ""
-        else:
-            radius = "border-radius: 4px;"
-            border_right = ""
+        radius = {
+            "first": "4px 0 0 4px",
+            "middle": "0",
+            "last": "0 4px 4px 0",
+        }[position]
 
         return f"""
-        QPushButton {{
-            color: {c["text"]};
-            background-color: {c["panel"]};
-            border: 1px solid {c["border"]};
-            {border_right}
-            {radius}
-        }}
+            QPushButton {{
+                color: {self.colors["text_primary"]};
+                background-color: {self.colors["surface"]};
+                border: 1px solid {self.colors["border"]};
+                border-right: none;
+                border-radius: {radius};
+                padding: 4px 10px;
+            }}
 
-        QPushButton:hover {{
-            color: {self.accent_text};
-            background-color: {c["accent"]};
-            border: 1px solid {c["accent"]};
-        }}
+            QPushButton:last-child {{
+                border-right: 1px solid {self.colors["border"]};
+            }}
 
-        QPushButton:pressed {{
-            background-color: {c["accent_hover"]};
-        }}
+            QPushButton:hover {{
+                color: {self.accent_text};
+                background-color: {self.colors["accent"]};
+                border-color: {self.colors["accent"]};
+            }}
 
-        QPushButton:checked {{
-            color: {self.accent_text};
-            background-color: {c["accent"]};
-            border: 1px solid {c["accent"]};
-        }}
-
-        QPushButton:disabled {{
-            color: {c["muted"]};
-            background-color: {c["panel"]};
-        }}
+            QPushButton:checked {{
+                color: {self.accent_text};
+                background-color: {self.colors["accent"]};
+                border-color: {self.colors["accent"]};
+            }}
         """
 
 class PlotCanvas(QWidget):
@@ -408,7 +405,7 @@ class PlotCanvas(QWidget):
         plot_item.clear()
         plot_item.hideButtons()
 
-        grid_alpha = 0.15 if theme.is_dark else 0.08
+        grid_alpha = 0.12 if theme.is_dark else 0.06
         plot_item.showGrid(x=True, y=True, alpha=grid_alpha)
 
         plot_item.getViewBox().setBackgroundColor(theme.plot["background"])
@@ -417,13 +414,15 @@ class PlotCanvas(QWidget):
         plot_item.setLabel("left", "Magnitude (dB)", color=theme.plot["text"])
 
         if title:
-            plot_item.setTitle(f"<span style='color: {theme.plot['text']}; font-size: 13pt; font-weight: 500'>{title}</span>")
+            plot_item.setTitle(
+                f"<span style='color: {theme.plot['text']}; font-size: {theme.fonts['title']}pt; font-weight: 500'>{title}</span>"
+            )
         else:
             plot_item.setTitle("")
 
         for axis_name in ("bottom", "left"):
             axis = plot_item.getAxis(axis_name)
-            axis.setPen(pg.mkPen(QColor(theme.plot["axis"]).lighter(120)))
+            axis.setPen(pg.mkPen(theme.plot["axis"]))
             axis.setTextPen(pg.mkPen(theme.plot["text"]))
 
     def expand_plot(self):
@@ -689,6 +688,7 @@ class PlotCanvas(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        m = AppTheme.current().spacing
         self.setWindowTitle("FFT Signal Analyzer")
         self.setMinimumSize(1200, 900)
         self.df = None
@@ -706,7 +706,8 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(0)
 
         file_bar = QHBoxLayout()
-        file_bar.setContentsMargins(8, 6, 8, 6)
+        file_bar.setContentsMargins(m["md"], m["sm"], m["md"], m["sm"])
+        file_bar.setSpacing(m["sm"])
         self.file_path_label = QLabel("Browse to a CSV file...")
         self.file_path_label.setMinimumWidth(0)
         self.file_path_label.setSizePolicy(
@@ -722,7 +723,6 @@ class MainWindow(QMainWindow):
         self.browse_button.setFixedWidth(90)
         self.browse_button.clicked.connect(self.browse_file)
         file_bar.addWidget(self.file_path_label, 1)
-        file_bar.addSpacing(8)
         file_bar.addWidget(self.browse_button)
         main_layout.addLayout(file_bar)
 
@@ -745,8 +745,8 @@ class MainWindow(QMainWindow):
 
         signals_header = QWidget()
         signals_header_layout = QHBoxLayout(signals_header)
-        signals_header_layout.setContentsMargins(8, 6, 4, 6)
-        signals_header_layout.setSpacing(6)
+        signals_header_layout.setContentsMargins(m["md"], m["xs"], m["sm"], m["xs"])
+        signals_header_layout.setSpacing(m["xs"])
 
         signals_label = QLabel("Signals")
         signals_label.setAlignment(
@@ -775,10 +775,11 @@ class MainWindow(QMainWindow):
         self.signal_list_widget = QWidget()
         self.signal_list_layout = QVBoxLayout(self.signal_list_widget)
         self.signal_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.signal_list_layout.setContentsMargins(8, 6, 8, 6)
-        self.signal_list_layout.setSpacing(4)
+        self.signal_list_layout.setContentsMargins(m["md"], m["sm"], m["md"], m["sm"])
+        self.signal_list_layout.setSpacing(m["xs"])
         scroll_area.setWidget(self.signal_list_widget)
         left_layout.addWidget(scroll_area)
+        left_layout.setStretchFactor(scroll_area, 1)
 
         self.left_sep_bottom = QFrame()
         self.left_sep_bottom.setFrameShape(QFrame.Shape.HLine)
@@ -790,7 +791,7 @@ class MainWindow(QMainWindow):
         self.plot_btn.setIconSize(QSize(16, 16))
         self.plot_btn.setFixedHeight(28)
         self.plot_btn.clicked.connect(self.plot_fft)
-        self.plot_btn.setContentsMargins(8, 8, 8, 8)
+        self.plot_btn.setContentsMargins(m["md"], m["sm"], m["md"], m["sm"])
         left_layout.addWidget(self.plot_btn)
 
         self.v_separator = QFrame()
@@ -808,8 +809,8 @@ class MainWindow(QMainWindow):
         self.top_bar_widget = QWidget()
         self.top_bar_widget.setVisible(False)
         top_bar = QHBoxLayout(self.top_bar_widget)
-        top_bar.setContentsMargins(8, 6, 8, 6)
-        top_bar.setSpacing(6)
+        top_bar.setContentsMargins(m["md"], m["sm"], m["md"], m["sm"])
+        top_bar.setSpacing(m["xs"])
 
         plots_per_page_widget = QWidget()
         plots_per_page_layout = QHBoxLayout(plots_per_page_widget)
@@ -831,7 +832,7 @@ class MainWindow(QMainWindow):
 
         self.page_btn_group.idClicked.connect(self.on_plots_per_page_changed)
         top_bar.addWidget(plots_per_page_widget)
-        top_bar.addSpacing(6)
+        top_bar.addSpacing(m["xs"])
 
         self.aa_btn = QPushButton()
         self.aa_btn.setFixedWidth(32)
@@ -874,8 +875,8 @@ class MainWindow(QMainWindow):
         self.plot_area.setMinimumWidth(0)
         self.plot_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.plot_grid = QVBoxLayout(self.plot_area)
-        self.plot_grid.setContentsMargins(8, 8, 8, 8)
-        self.plot_grid.setSpacing(8)
+        self.plot_grid.setContentsMargins(m["md"], m["md"], m["md"], m["md"])
+        self.plot_grid.setSpacing(m["md"])
         self.right_layout.addWidget(self.plot_area)
 
         self.plot_placeholder = QLabel("Load a CSV file and select signals to plot")
@@ -1208,6 +1209,7 @@ class MainWindow(QMainWindow):
                 self.clear_layout_recursive(item.layout())
 
     def render_page(self):
+        m = AppTheme.current().spacing
         self.clear_layout(self.plot_grid)
 
         if self.df is None:
@@ -1245,7 +1247,7 @@ class MainWindow(QMainWindow):
             if i % cols == 0:
                 row_layout = QHBoxLayout()
                 row_layout.setContentsMargins(0, 0, 0, 0)
-                row_layout.setSpacing(8)
+                row_layout.setSpacing(m["md"])
                 self.plot_grid.addLayout(row_layout)
 
             canvas = PlotCanvas()
