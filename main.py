@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+from turtle import position
+from unicodedata import name
 
 import numpy as np
 import pandas as pd
@@ -26,238 +28,233 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-
 pg.setConfigOptions(antialias=False)
-
 
 def color_hex(color):
     return color.name(QColor.NameFormat.HexRgb)
 
-
 def color_luminance(color):
     return 0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue()
 
+def apply_icon_hover(button, theme, icon_name):
+    import qtawesome as qta
+
+    def set_default():
+        button.setIcon(qta.icon(icon_name, color=theme.colors["text"]))
+
+    def set_active():
+        button.setIcon(qta.icon(icon_name, color=theme.accent_text))
+
+    def update_icon():
+        if button.isChecked():
+            set_active()
+        else:
+            set_default()
+
+    def enterEvent(e):
+        set_active()
+
+    def leaveEvent(e):
+        update_icon()
+
+    def toggled(_):
+        update_icon()
+
+    button.enterEvent = enterEvent
+    button.leaveEvent = leaveEvent
+    button.toggled.connect(toggled)
+
+    update_icon()
 
 class AppTheme:
     def __init__(self, palette):
-        self.palette = palette
-        self.window = palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Window)
-        self.window_text = palette.color(
-            QPalette.ColorGroup.Active, QPalette.ColorRole.WindowText
-        )
-        self.base = palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Base)
-        self.text = palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Text)
-        self.button = palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Button)
-        self.button_text = palette.color(
-            QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText
-        )
-        self.highlight = palette.color(
-            QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight
-        )
-        self.highlighted_text = palette.color(
-            QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText
-        )
-        self.border = palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Mid)
-        self.disabled_text = palette.color(
-            QPalette.ColorGroup.Disabled,
-            QPalette.ColorRole.ButtonText,
-        )
-        self.disabled_button = palette.color(
-            QPalette.ColorGroup.Disabled,
-            QPalette.ColorRole.Button,
-        )
+        self.is_dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
 
-        self.is_dark = color_luminance(self.window) < 128
-        self.separator = (
-            self.window.lighter(140) if self.is_dark else self.window.darker(130)
-        )
-        self.accent_hover = self.highlight.lighter(112) if self.is_dark else self.highlight.darker(108)
-        self.accent_pressed = self.highlight.darker(112)
-        self.accent_text = QColor("#ffffff") if color_luminance(self.highlight) < 150 else QColor("#111111")
-        self.panel_surface = (
-            self.window.darker(108) if self.is_dark else self.window.darker(104)
-        )
-        self.panel_text = self.window_text
-        self.input_surface = self.base
-        self.checkbox_border = self.border.lighter(145) if self.is_dark else self.border
-        self.checkbox_check_icon = (
-            Path(__file__).resolve().parent / "assets" / "checkmark_white.svg"
-        ).as_posix()
-        self.plot_panel = "#252525"
-        self.plot_background = "#1e1e1e"
-        self.plot_text = "#ffffff"
-        self.plot_axis = "#777777"
-        self.plot_grid_alpha = 0.22
-        self.peak = "#ffff00"
-        self.curve = self.visible_plot_accent()
+        if self.is_dark:
+            self.colors = {
+                "bg": "#1e1e1e",
+                "panel": "#252526",
+                "text": "#ffffff",
+                "muted": "#aaaaaa",
+                "accent": "#44a1ff",
+                "accent_hover": "#3ea6ff",
+                "border": "#3c3c3c",
+            }
+        else:
+            self.colors = {
+                "bg": "#f5f5f5",
+                "panel": "#ffffff",
+                "text": "#111111",
+                "muted": "#666666",
+                "accent": "#44a1ff",
+                "accent_hover": "#005fa3",
+                "border": "#d0d0d0",
+            }
+
+        self.accent_text = "#ffffff"
+
+        if self.is_dark:
+            self.plot = {
+                "panel": self.colors["bg"],
+                "background": self.colors["panel"],
+                "text": self.colors["text"],
+                "axis": "#aaaaaa",
+                "grid_alpha": 0.25,
+                "curve": self.colors["accent"],
+                "peak": QColor(self.colors["accent"]).lighter(140).name(),
+            }
+        else:
+            self.plot = {
+                "panel": self.colors["bg"],
+                "background": self.colors["panel"],
+                "text": self.colors["text"],
+                "axis": "#555555",
+                "grid_alpha": 0.2,
+
+                "curve": QColor(self.colors["accent"]).darker(110).name(),
+
+                "peak": QColor(self.colors["accent"]).darker(150).name(),
+            }
 
     @classmethod
     def current(cls):
+        from PyQt6.QtWidgets import QApplication
         return cls(QApplication.instance().palette())
-
-    def visible_plot_accent(self):
-        accent = QColor(self.highlight)
-        for _ in range(8):
-            if color_luminance(accent) >= 150:
-                return color_hex(accent)
-            accent = accent.lighter(125)
-        return "#00bfff"
 
     def icon(self, name):
         return qta.icon(
             name,
-            color=color_hex(self.button_text),
-            color_off=color_hex(self.button_text),
-            color_on=color_hex(self.accent_text),
-            color_active=color_hex(self.accent_text),
-            color_selected=color_hex(self.accent_text),
-            color_off_active=color_hex(self.accent_text),
-            color_on_active=color_hex(self.accent_text),
-            color_off_selected=color_hex(self.accent_text),
-            color_on_selected=color_hex(self.accent_text),
-            color_disabled=color_hex(self.disabled_text),
+            color=self.colors["text"],
+            color_active=self.accent_text,
+            color_selected=self.accent_text,
+            color_disabled=self.colors["muted"],
         )
 
-    def segmented_button_style(self, position):
-        radius = {
-            "first": "border-top-left-radius: 4px; border-bottom-left-radius: 4px;",
-            "middle": "border-radius: 0px;",
-            "last": "border-top-right-radius: 4px; border-bottom-right-radius: 4px;",
-            "single": "border-radius: 4px;",
-        }[position]
-        right_border = "border-right: none;" if position in {"first", "middle"} else ""
+    def icon_active(self, name):
+        return qta.icon(name, color=self.accent_text)
 
+    def button_style(self):
         return f"""
-            QPushButton {{
-                color: {color_hex(self.button_text)};
-                background-color: {color_hex(self.button)};
-                border: 1px solid {color_hex(self.border)};
-                {right_border}
-                {radius}
-            }}
-            QPushButton:hover {{
-                color: {color_hex(self.accent_text)};
-                background-color: {color_hex(self.accent_hover)};
-                border-color: {color_hex(self.highlight)};
-            }}
-            QPushButton:pressed {{
-                color: {color_hex(self.accent_text)};
-                background-color: {color_hex(self.accent_pressed)};
-                border-color: {color_hex(self.highlight)};
-            }}
-            QPushButton:checked {{
-                color: {color_hex(self.accent_text)};
-                background-color: {color_hex(self.highlight)};
-                border-color: {color_hex(self.highlight)};
-            }}
-            QPushButton:disabled {{
-                color: {color_hex(self.disabled_text)};
-                background-color: {color_hex(self.disabled_button)};
-                border-color: {color_hex(self.border)};
-            }}
-        """
+        QPushButton {{
+            color: {self.colors["text"]};
+            background-color: {self.colors["panel"]};
+            border: 1px solid {self.colors["border"]};
+            border-radius: 4px;
+        }}
 
-    def tool_button_style(self):
-        return f"""
-            QPushButton {{
-                color: {color_hex(self.button_text)};
-                background-color: {color_hex(self.button)};
-                border: 1px solid {color_hex(self.border)};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                color: {color_hex(self.accent_text)};
-                background-color: {color_hex(self.accent_hover)};
-                border-color: {color_hex(self.highlight)};
-            }}
-            QPushButton:pressed {{
-                color: {color_hex(self.accent_text)};
-                background-color: {color_hex(self.accent_pressed)};
-                border-color: {color_hex(self.highlight)};
-            }}
-            QPushButton:checked {{
-                color: {color_hex(self.accent_text)};
-                background-color: {color_hex(self.highlight)};
-                border-color: {color_hex(self.highlight)};
-            }}
-            QPushButton:disabled {{
-                color: {color_hex(self.disabled_text)};
-                background-color: {color_hex(self.disabled_button)};
-                border-color: {color_hex(self.border)};
-            }}
-        """
+        QPushButton:hover {{
+            color: {self.accent_text};
+            background-color: {self.colors["accent"]};
+            border: 1px solid {self.colors["accent"]};
+        }}
 
-    def plot_canvas_style(self):
-        return f"""
-            PlotCanvas {{
-                background-color: {color_hex(self.window)};
-                border: 1px solid {color_hex(self.border)};
-            }}
-            PlotCanvas QLabel {{
-                color: {color_hex(self.window_text)};
-            }}
-        """
+        QPushButton:pressed {{
+            background-color: {self.colors["accent_hover"]};
+        }}
 
-    def separator_style(self):
-        return f"background-color: {color_hex(self.separator)};"
+        QPushButton:disabled {{
+            color: {self.colors["muted"]};
+            background-color: {self.colors["panel"]};
+        }}
+        """
 
     def panel_style(self):
-        return f"background-color: {color_hex(self.panel_surface)};"
-
-    def left_panel_style(self):
         return f"""
-            QWidget {{
-                background-color: {color_hex(self.panel_surface)};
-                color: {color_hex(self.panel_text)};
-            }}
-            QLabel {{
-                color: {color_hex(self.panel_text)};
-            }}
-            QCheckBox {{
-                color: {color_hex(self.panel_text)};
-                spacing: 6px;
-            }}
-            QCheckBox::indicator {{
-                width: 14px;
-                height: 14px;
-                border: 1px solid {color_hex(self.checkbox_border)};
-                border-radius: 3px;
-                background-color: {color_hex(self.input_surface)};
-            }}
-            QCheckBox::indicator:checked {{
-                border-color: {color_hex(self.highlight)};
-                background-color: {color_hex(self.highlight)};
-                image: url("{self.checkbox_check_icon}");
-            }}
-            QCheckBox::indicator:disabled {{
-                border-color: {color_hex(self.disabled_text)};
-                background-color: {color_hex(self.disabled_button)};
-            }}
+        QWidget {{
+            background-color: {self.colors["panel"]};
+            color: {self.colors["text"]};
+        }}
         """
 
-    def top_bar_style(self):
+    def main_style(self):
         return f"""
-            QWidget {{
-                background-color: {color_hex(self.panel_surface)};
-                color: {color_hex(self.panel_text)};
-            }}
-            QLabel {{
-                color: {color_hex(self.panel_text)};
-            }}
+        QWidget {{
+            background-color: {self.colors["bg"]};
+            color: {self.colors["text"]};
+        }}
         """
 
-    def file_path_style(self):
+    def checkbox_style(self):
         return f"""
-            QLabel {{
-                color: {color_hex(self.text)};
-                background-color: {color_hex(self.base)};
-                border: 1px solid {color_hex(self.border)};
-                border-radius: 4px;
-                padding-left: 6px;
-                padding-right: 6px;
-            }}
+        QCheckBox {{
+            color: {self.colors["text"]};
+            spacing: 6px;
+        }}
+
+        QCheckBox::indicator {{
+            width: 14px;
+            height: 14px;
+            border: 1px solid {self.colors["border"]};
+            border-radius: 3px;
+            background-color: {self.colors["panel"]};
+        }}
+
+        QCheckBox::indicator:checked {{
+            background-color: {self.colors["accent"]};
+            border: 1px solid {self.colors["accent"]};
+        }}
+
+        QCheckBox::indicator:checked:disabled {{
+            background-color: {self.colors["muted"]};
+        }}
         """
 
+    def input_style(self):
+        return f"""
+        QLabel {{
+            color: {self.colors["text"]};
+            background-color: {self.colors["panel"]};
+            border: 1px solid {self.colors["border"]};
+            border-radius: 4px;
+            padding: 4px;
+        }}
+        """
+    def segmented_button_style(self, position):
+        c = self.colors
+
+        if position == "first":
+            radius = "border-top-left-radius: 4px; border-bottom-left-radius: 4px;"
+            border_right = "border-right: none;"
+        elif position == "middle":
+            radius = "border-radius: 0px;"
+            border_right = "border-right: none;"
+        elif position == "last":
+            radius = "border-top-right-radius: 4px; border-bottom-right-radius: 4px;"
+            border_right = ""
+        else:
+            radius = "border-radius: 4px;"
+            border_right = ""
+
+        return f"""
+        QPushButton {{
+            color: {c["text"]};
+            background-color: {c["panel"]};
+            border: 1px solid {c["border"]};
+            {border_right}
+            {radius}
+        }}
+
+        QPushButton:hover {{
+            color: {self.accent_text};
+            background-color: {c["accent"]};
+            border: 1px solid {c["accent"]};
+        }}
+
+        QPushButton:pressed {{
+            background-color: {c["accent_hover"]};
+        }}
+
+        QPushButton:checked {{
+            color: {self.accent_text};
+            background-color: {c["accent"]};
+            border: 1px solid {c["accent"]};
+        }}
+
+        QPushButton:disabled {{
+            color: {c["muted"]};
+            background-color: {c["panel"]};
+        }}
+        """
 
 class PlotCanvas(QWidget):
     def __init__(self, parent=None):
@@ -278,7 +275,6 @@ class PlotCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
 
-        # Title bar
         title_bar = QHBoxLayout()
         title_bar.setContentsMargins(4, 4, 4, 0)
 
@@ -306,7 +302,6 @@ class PlotCanvas(QWidget):
         layout.addWidget(self.plot_widget)
         layout.setStretchFactor(self.plot_widget, 1)
 
-        # Axis limit inputs
         axis_bar = QHBoxLayout()
         axis_bar.setSpacing(4)
 
@@ -348,21 +343,50 @@ class PlotCanvas(QWidget):
         layout.addLayout(axis_bar)
         self.apply_theme(AppTheme.current())
 
+    def detect_harmonics(self, tolerance=0.05):
+        if self.peak_indices is None or len(self.peak_indices) < 2:
+            return []
+
+        base_freq = self.freqs[self.peak_indices[0]]
+        harmonics = []
+
+        for idx in self.peak_indices[1:]:
+            freq = self.freqs[idx]
+            ratio = freq / base_freq
+
+            if abs(ratio - round(ratio)) < tolerance:
+                harmonics.append((freq, int(round(ratio))))
+
+        return harmonics
+
     def apply_theme(self, theme):
-        self.setStyleSheet(theme.plot_canvas_style())
-        self.expand_btn.setIcon(theme.icon("fa5s.window-maximize"))
-        self.save_btn.setIcon(theme.icon("fa5s.download"))
-        self.reset_btn.setIcon(theme.icon("fa5s.undo"))
+
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {theme.plot["panel"]};
+                border: 1px solid {theme.colors["border"]};
+            }}
+        """)
+
         for button in (self.expand_btn, self.save_btn, self.reset_btn):
-            button.setStyleSheet(theme.tool_button_style())
+            button.setStyleSheet(theme.button_style())
+
+        apply_icon_hover(self.expand_btn, theme, "fa5s.window-maximize")
+        apply_icon_hover(self.save_btn, theme, "fa5s.download")
+        apply_icon_hover(self.reset_btn, theme, "fa5s.undo")
+
+        if hasattr(self, "plot_widget"):
+            self.plot_widget.setBackground(theme.plot["panel"])
+            self.plot_widget.getViewBox().setBackgroundColor(theme.plot["background"])
 
         if hasattr(self, "plot_item"):
             self.configure_plot_item(self.plot_item, self.signal_name or "")
-            self.redraw_plot(preserve_range=True)
+
+        self.redraw_plot(preserve_range=True)
 
     def create_plot_widget(self, sync_inputs):
         theme = AppTheme.current()
-        plot_widget = pg.PlotWidget(background=theme.plot_panel)
+        plot_widget = pg.PlotWidget(background=theme.plot["panel"])
         plot_widget.setMinimumWidth(0)
         plot_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         plot_widget.setMenuEnabled(False)
@@ -371,7 +395,7 @@ class PlotCanvas(QWidget):
         view_box = plot_item.getViewBox()
         view_box.setMouseMode(pg.ViewBox.PanMode)
         view_box.setDefaultPadding(0.0)
-        view_box.setBackgroundColor(theme.plot_background)
+        view_box.setBackgroundColor(theme.plot["background"])
 
         if sync_inputs:
             view_box.sigRangeChanged.connect(self.on_view_range_changed)
@@ -381,22 +405,27 @@ class PlotCanvas(QWidget):
 
     def configure_plot_item(self, plot_item, title):
         theme = AppTheme.current()
+
         plot_item.clear()
         plot_item.hideButtons()
-        plot_item.showGrid(x=True, y=True, alpha=theme.plot_grid_alpha)
-        plot_item.getViewBox().setBackgroundColor(theme.plot_background)
-        plot_item.setLabel("bottom", "Frequency (Hz)", color=theme.plot_text)
-        plot_item.setLabel("left", "Magnitude (dB)", color=theme.plot_text)
+
+        grid_alpha = 0.15 if theme.is_dark else 0.08
+        plot_item.showGrid(x=True, y=True, alpha=grid_alpha)
+
+        plot_item.getViewBox().setBackgroundColor(theme.plot["background"])
+
+        plot_item.setLabel("bottom", "Frequency (Hz)", color=theme.plot["text"])
+        plot_item.setLabel("left", "Magnitude (dB)", color=theme.plot["text"])
 
         if title:
-            plot_item.setTitle(f"<span style='color: {theme.plot_text}; font-size: 14pt'>{title}</span>")
+            plot_item.setTitle(f"<span style='color: {theme.plot['text']}; font-size: 13pt; font-weight: 500'>{title}</span>")
         else:
             plot_item.setTitle("")
 
         for axis_name in ("bottom", "left"):
             axis = plot_item.getAxis(axis_name)
-            axis.setPen(pg.mkPen(theme.plot_axis))
-            axis.setTextPen(pg.mkPen(theme.plot_text))
+            axis.setPen(pg.mkPen(QColor(theme.plot["axis"]).lighter(120)))
+            axis.setTextPen(pg.mkPen(theme.plot["text"]))
 
     def expand_plot(self):
         if self.freqs is None or self.fft_db is None:
@@ -508,8 +537,11 @@ class PlotCanvas(QWidget):
         windowed = centered * window
 
         fft_vals = np.fft.rfft(windowed)
-        fft_mag = np.abs(fft_vals)
-        fft_db = 20 * np.log10(fft_mag + 1e-10)
+
+        scale = np.sum(window) / 2
+        fft_mag = np.abs(fft_vals) / scale
+
+        fft_db = 20 * np.log10(fft_mag + 1e-12)
         freqs = np.fft.rfftfreq(samples.size, d=1.0 / sampling_rate)
         return freqs, fft_db
 
@@ -517,18 +549,17 @@ class PlotCanvas(QWidget):
         if fft_db is None or len(fft_db) == 0:
             return np.array([], dtype=int)
 
-        peak_indices, _ = find_peaks(fft_db)
-        if peak_indices.size == 0:
-            if len(fft_db) <= 1:
-                return np.array([], dtype=int)
-            candidate_indices = np.arange(1, len(fft_db))
-        else:
-            candidate_indices = peak_indices
+        peak_indices, properties = find_peaks(
+            fft_db,
+            prominence=6,
+            distance=10
+        )
 
-        candidate_levels = fft_db[candidate_indices]
-        significant = candidate_indices[candidate_levels >= candidate_levels.max() - 25.0]
-        ordered = significant[np.argsort(fft_db[significant])][::-1]
-        return ordered[:count]
+        if peak_indices.size == 0:
+            return np.array([], dtype=int)
+
+        sorted_idx = peak_indices[np.argsort(fft_db[peak_indices])[::-1]]
+        return sorted_idx[:count]
 
     def default_y_limits(self):
         y_min = float(np.min(self.fft_db))
@@ -542,7 +573,7 @@ class PlotCanvas(QWidget):
         theme = AppTheme.current()
         label = pg.TextItem(
             text=f"{self.freqs[idx]:.1f} Hz",
-            color=theme.peak,
+            color=theme.plot["peak"],
             anchor=(0, 1),
         )
         font = QFont()
@@ -553,6 +584,7 @@ class PlotCanvas(QWidget):
 
     def populate_plot_widget(self, plot_widget, marker_size, annotation_fontsize, x_range=None, y_range=None):
         theme = AppTheme.current()
+
         plot_item = plot_widget.getPlotItem()
         view_box = plot_item.getViewBox()
 
@@ -561,7 +593,7 @@ class PlotCanvas(QWidget):
         curve = plot_item.plot(
             self.freqs,
             self.fft_db,
-            pen=pg.mkPen(theme.curve, width=1),
+            pen=pg.mkPen(theme.plot["curve"], width=2.5),
         )
         curve.setClipToView(True)
         curve.setDownsampling(auto=True, method="peak")
@@ -569,19 +601,33 @@ class PlotCanvas(QWidget):
         if self.peak_indices.size:
             peak_x = self.freqs[self.peak_indices]
             peak_y = self.fft_db[self.peak_indices]
+
             markers = pg.ScatterPlotItem(
                 x=peak_x,
                 y=peak_y,
-                symbol="t",
-                size=marker_size,
-                brush=pg.mkBrush(theme.peak),
-                pen=pg.mkPen(theme.peak),
+                symbol="o",
+                size=marker_size + 3,
+                brush=pg.mkBrush(theme.plot["peak"]),
+                pen=pg.mkPen("#00000000"),
             )
             plot_item.addItem(markers)
 
-            y_offset = max((self.default_y_range[1] - self.default_y_range[0]) * 0.03, 1.5)
-            for idx in self.peak_indices:
-                plot_item.addItem(self.peak_label_item(idx, annotation_fontsize, y_offset))
+            y_offset = max((self.default_y_range[1] - self.default_y_range[0]) * 0.04, 2.0)
+
+            for i, idx in enumerate(self.peak_indices):
+                label = pg.TextItem(
+                    text=f"{self.freqs[idx]:.1f} Hz",
+                    color=theme.plot["peak"],
+                    anchor=(0.5, 1.2),
+                )
+
+                font = QFont()
+                font.setPointSize(annotation_fontsize)
+                font.setBold(i == 0)
+                label.setFont(font)
+
+                label.setPos(float(self.freqs[idx]), float(self.fft_db[idx] + y_offset))
+                plot_item.addItem(label)
 
         if x_range is None:
             x_range = self.default_x_range
@@ -613,12 +659,33 @@ class PlotCanvas(QWidget):
         self.signal_name = signal_name
         self.title_label.setText(signal_name)
         self.freqs, self.fft_db = self.compute_spectrum(signal, sampling_rate)
+        self.freq_resolution = sampling_rate / len(signal)
         self.peak_indices = self.find_dominant_peaks(self.fft_db)
+
+        harmonics = self.detect_harmonics()
+
+        if len(self.peak_indices):
+            dom_freq = self.freqs[self.peak_indices[0]]
+            dom_amp = self.fft_db[self.peak_indices[0]]
+        else:
+            dom_freq, dom_amp = None, None
+
+        print("\n=== FFT Analysis ===")
+        if dom_freq is not None:
+            print(f"Dominant Frequency: {dom_freq:.2f} Hz")
+            print(f"Amplitude: {dom_amp:.2f} dB")
+
+        if harmonics:
+            print("Harmonics:")
+            for f, n in harmonics:
+                print(f"  {f:.2f} Hz ({n}x)")
+
+        print(f"Resolution: {self.freq_resolution:.2f} Hz")
+        print("====================\n")
         self.default_x_range = (float(self.freqs[0]), float(self.freqs[-1]))
         self.default_y_range = self.default_y_limits()
 
         self.redraw_plot()
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -639,7 +706,6 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # --- File Browser Bar ---
         file_bar = QHBoxLayout()
         file_bar.setContentsMargins(8, 6, 8, 6)
         self.file_path_label = QLabel("Browse to a CSV file...")
@@ -660,19 +726,16 @@ class MainWindow(QMainWindow):
         file_bar.addWidget(self.browse_button)
         main_layout.addLayout(file_bar)
 
-        # Horizontal separator below file bar
         self.h_separator = QFrame()
         self.h_separator.setFrameShape(QFrame.Shape.HLine)
         self.h_separator.setFrameShadow(QFrame.Shadow.Plain)
         self.h_separator.setFixedHeight(1)
         main_layout.addWidget(self.h_separator)
 
-        # --- Two Panel Layout ---
         panels_layout = QHBoxLayout()
         panels_layout.setSpacing(0)
         panels_layout.setContentsMargins(0, 0, 0, 0)
 
-        # --- Left Panel ---
         self.left_panel = QWidget()
         self.left_panel.setFixedWidth(220)
         self.left_panel.setVisible(False)
@@ -729,21 +792,18 @@ class MainWindow(QMainWindow):
         self.plot_btn.setContentsMargins(8, 8, 8, 8)
         left_layout.addWidget(self.plot_btn)
 
-        # Vertical separator between panels
         self.v_separator = QFrame()
         self.v_separator.setFrameShape(QFrame.Shape.VLine)
         self.v_separator.setFrameShadow(QFrame.Shadow.Plain)
         self.v_separator.setFixedWidth(1)
         self.v_separator.setVisible(False)
 
-        # --- Right Panel ---
         right_panel = QWidget()
         right_panel.setMinimumWidth(0)
         self.right_layout = QVBoxLayout(right_panel)
         self.right_layout.setContentsMargins(0, 0, 0, 0)
         self.right_layout.setSpacing(0)
 
-        # Top bar: plots per page, anti-alias, and pagination.
         self.top_bar_widget = QWidget()
         self.top_bar_widget.setVisible(False)
         top_bar = QHBoxLayout(self.top_bar_widget)
@@ -809,7 +869,6 @@ class MainWindow(QMainWindow):
         self.top_sep.setVisible(False)
         self.right_layout.addWidget(self.top_sep)
 
-        # Plot area
         self.plot_area = QWidget()
         self.plot_area.setMinimumWidth(0)
         self.plot_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -831,22 +890,35 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event):
         super().changeEvent(event)
+
         if event.type() in {
             QEvent.Type.ApplicationPaletteChange,
             QEvent.Type.PaletteChange,
             QEvent.Type.StyleChange,
         }:
-            self.apply_theme()
+            self.refresh_theme()
+
+    def refresh_theme(self):
+        theme = AppTheme.current()
+
+        self.apply_theme()
+        self.render_page()
+        self.apply_theme()
+
+        self.update_toggle_all_button()
+        self.repaint()
 
     def apply_theme(self):
         if not hasattr(self, "aa_btn"):
             return
 
         theme = AppTheme.current()
-        self.left_panel.setStyleSheet(theme.left_panel_style())
-        self.top_bar_widget.setStyleSheet(theme.top_bar_style())
 
-        separator_style = theme.separator_style()
+        self.centralWidget().setStyleSheet(theme.main_style())
+        self.left_panel.setStyleSheet(theme.panel_style())
+        self.top_bar_widget.setStyleSheet(theme.panel_style())
+
+        separator_style = f"background-color: {theme.colors['border']};"
         for separator in (
             self.h_separator,
             self.left_sep_top,
@@ -856,24 +928,60 @@ class MainWindow(QMainWindow):
         ):
             separator.setStyleSheet(separator_style)
 
-        self.aa_btn.setIcon(theme.icon("fa5s.wave-square"))
-        self.prev_btn.setIcon(theme.icon("fa5s.chevron-left"))
-        self.next_btn.setIcon(theme.icon("fa5s.chevron-right"))
-        self.browse_button.setStyleSheet(theme.tool_button_style())
-        self.plot_btn.setStyleSheet(theme.tool_button_style())
-        self.toggle_all_btn.setStyleSheet(theme.tool_button_style())
-        self.file_path_label.setStyleSheet(theme.file_path_style())
-        self.update_toggle_all_button()
+        self.browse_button.setStyleSheet(theme.button_style())
+        self.plot_btn.setStyleSheet(theme.button_style())
+        self.toggle_all_btn.setStyleSheet(theme.button_style())
 
-        for button in (self.aa_btn, self.prev_btn, self.next_btn):
-            button.setStyleSheet(theme.tool_button_style())
+        for button in (self.prev_btn, self.next_btn):
+            button.setStyleSheet(theme.button_style())
+
+        self.aa_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.colors["text"]};
+                background-color: {theme.colors["panel"]};
+                border: 1px solid {theme.colors["border"]};
+                border-radius: 4px;
+            }}
+
+            QPushButton:hover {{
+                color: {theme.accent_text};
+                background-color: {theme.colors["accent"]};
+                border: 1px solid {theme.colors["accent"]};
+            }}
+
+            QPushButton:checked {{
+                color: {theme.accent_text};
+                background-color: {theme.colors["accent"]};
+                border: 1px solid {theme.colors["accent"]};
+            }}
+
+            QPushButton:pressed {{
+                background-color: {theme.colors["accent_hover"]};
+            }}
+        """)
+
+        apply_icon_hover(self.browse_button, theme, "fa5s.folder-open")
+        apply_icon_hover(self.plot_btn, theme, "fa5s.chart-line")
+        apply_icon_hover(self.aa_btn, theme, "fa5s.wave-square")
+        apply_icon_hover(self.prev_btn, theme, "fa5s.chevron-left")
+        apply_icon_hover(self.next_btn, theme, "fa5s.chevron-right")
+
+        self.file_path_label.setStyleSheet(theme.input_style())
 
         positions = {1: "first", 2: "middle", 3: "middle", 4: "last"}
         for btn_id, button in self.page_buttons.items():
             button.setStyleSheet(theme.segmented_button_style(positions[btn_id]))
 
+        for i in range(self.signal_list_layout.count()):
+            widget = self.signal_list_layout.itemAt(i).widget()
+            if isinstance(widget, QCheckBox):
+                widget.setStyleSheet(theme.checkbox_style())
+
         for plot in self.canvas_widgets:
             plot.apply_theme(theme)
+
+        self.update_toggle_all_button()
+        self.repaint()
 
     def browse_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -949,13 +1057,20 @@ class MainWindow(QMainWindow):
         self.update_toggle_all_button()
 
     def populate_signals(self):
+        theme = AppTheme.current()
+
         self.clear_signal_list()
+
         signal_columns = self.df.columns[1:]
+
         for col in signal_columns:
             checkbox = QCheckBox(col)
+            checkbox.setStyleSheet(theme.checkbox_style())
             checkbox.stateChanged.connect(self.update_toggle_all_button)
             self.signal_list_layout.addWidget(checkbox)
+
         self.update_toggle_all_button()
+        self.repaint()
 
     def toggle_all_signals(self):
         checkboxes = []
@@ -977,35 +1092,32 @@ class MainWindow(QMainWindow):
         self.update_toggle_all_button()
 
     def update_toggle_all_button(self):
-        if not hasattr(self, "toggle_all_btn"):
-            return
+        theme = AppTheme.current()
 
         checkboxes = []
         checked_count = 0
+
         for i in range(self.signal_list_layout.count()):
-            checkbox = self.signal_list_layout.itemAt(i).widget()
-            if isinstance(checkbox, QCheckBox):
-                checkboxes.append(checkbox)
-                if checkbox.isChecked():
+            widget = self.signal_list_layout.itemAt(i).widget()
+            if isinstance(widget, QCheckBox):
+                checkboxes.append(widget)
+                if widget.isChecked():
                     checked_count += 1
 
         if not checkboxes:
-            self.toggle_all_btn.setEnabled(False)
-            self.toggle_all_btn.setIcon(AppTheme.current().icon("fa5s.plus-square"))
-            self.toggle_all_btn.setToolTip("Select all signals")
             return
 
-        theme = AppTheme.current()
-        self.toggle_all_btn.setEnabled(True)
+        total = len(checkboxes)
+
         if checked_count == 0:
-            self.toggle_all_btn.setIcon(theme.icon("fa5s.plus-square"))
-            self.toggle_all_btn.setToolTip("Select all signals")
-        elif checked_count == len(checkboxes):
-            self.toggle_all_btn.setIcon(theme.icon("fa5.square"))
-            self.toggle_all_btn.setToolTip("Deselect all signals")
+            icon_name = "fa5s.plus-square"
+            tooltip = "Select all signals"
         else:
-            self.toggle_all_btn.setIcon(theme.icon("fa5s.minus-square"))
-            self.toggle_all_btn.setToolTip("Deselect all signals")
+            icon_name = "fa5s.minus-square"
+            tooltip = "Deselect all signals"
+
+        apply_icon_hover(self.toggle_all_btn, theme, icon_name)
+        self.toggle_all_btn.setToolTip(tooltip)
 
     def show_placeholder(self, message):
         placeholder = QLabel(message)
@@ -1141,7 +1253,6 @@ class MainWindow(QMainWindow):
             self.canvas_widgets.append(canvas)
             row_layout.addWidget(canvas, 1)
 
-        # Let a final single plot fill the row naturally.
         if len(page_signals) > 1 and len(page_signals) % cols != 0 and row_layout:
             filler = QWidget()
             filler.setMinimumWidth(0)
@@ -1159,13 +1270,11 @@ class MainWindow(QMainWindow):
             self.current_page += 1
             self.render_page()
 
-
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
