@@ -8,7 +8,7 @@ import pandas as pd
 import pyqtgraph as pg
 import qtawesome as qta
 from scipy.signal import find_peaks, windows
-from PyQt6.QtCore import QEvent, QSize, Qt
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
@@ -79,7 +79,7 @@ class AppTheme:
                 "text_secondary": "#c8c8c8",
                 "accent": "#0078d4",
                 "accent_hover": "#2893ff",
-                "border": "#3c3c3c",
+                "border": "#2f2f2f",
                 "danger": "#e81123",
                 "success": "#107c10",
             }
@@ -92,7 +92,7 @@ class AppTheme:
                 "text_secondary": "#555555",
                 "accent": "#0078d4",
                 "accent_hover": "#005a9e",
-                "border": "#d0d0d0",
+                "border": "#e5e5e5",
                 "danger": "#d13438",
                 "success": "#107c10",
             }
@@ -125,10 +125,21 @@ class AppTheme:
         self.colors["text"] = self.colors["text_primary"]
         self.colors["muted"] = self.colors["text_secondary"]
 
-    @classmethod
-    def current(cls):
-        from PyQt6.QtWidgets import QApplication
-        return cls(QApplication.instance().palette())
+    @staticmethod
+    def current():
+        import winreg
+
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            )
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            is_dark = (value == 0)
+        except:
+            is_dark = True
+
+        return AppTheme(is_dark)
 
     def icon(self, name):
         return qta.icon(
@@ -688,6 +699,11 @@ class PlotCanvas(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self._last_theme_is_dark = AppTheme.current().is_dark
+
+        self.theme_timer = QTimer()
+        self.theme_timer.timeout.connect(self.check_theme_change)
+        self.theme_timer.start(1000)
         m = AppTheme.current().spacing
         self.setWindowTitle("FFT Signal Analyzer")
         self.setMinimumSize(1200, 900)
@@ -889,6 +905,13 @@ class MainWindow(QMainWindow):
         panels_layout.setStretch(2, 1)
         main_layout.addLayout(panels_layout)
         self.apply_theme()
+    
+    def check_theme_change(self):
+        current_theme = AppTheme.current()
+
+        if current_theme.is_dark != self._last_theme_is_dark:
+            self._last_theme_is_dark = current_theme.is_dark
+            self.refresh_theme()
 
     def changeEvent(self, event):
         super().changeEvent(event)
