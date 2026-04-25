@@ -135,27 +135,25 @@ class AppTheme:
 
     def button_style(self):
         return f"""
-        QPushButton {{
-            color: {self.colors["text"]};
-            background-color: {self.colors["panel"]};
-            border: 1px solid {self.colors["border"]};
-            border-radius: 4px;
-        }}
+            QPushButton {{
+                color: {self.colors["text"]};
+                background-color: {self.colors["panel"]};
+                border: 1px solid {self.colors["border"]};
+                border-radius: 4px;
+                padding: 4px 10px;
+                padding-left: 12px;
+                padding-right: 12px;
+            }}
 
-        QPushButton:hover {{
-            color: {self.accent_text};
-            background-color: {self.colors["accent"]};
-            border: 1px solid {self.colors["accent"]};
-        }}
+            QPushButton:hover {{
+                color: {self.accent_text};
+                background-color: {self.colors["accent"]};
+                border: 1px solid {self.colors["accent"]};
+            }}
 
-        QPushButton:pressed {{
-            background-color: {self.colors["accent_hover"]};
-        }}
-
-        QPushButton:disabled {{
-            color: {self.colors["muted"]};
-            background-color: {self.colors["panel"]};
-        }}
+            QPushButton:pressed {{
+                background-color: {self.colors["accent_hover"]};
+            }}
         """
 
     def panel_style(self):
@@ -360,7 +358,6 @@ class PlotCanvas(QWidget):
         return harmonics
 
     def apply_theme(self, theme):
-
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {theme.plot["panel"]};
@@ -370,6 +367,8 @@ class PlotCanvas(QWidget):
 
         for button in (self.expand_btn, self.save_btn, self.reset_btn):
             button.setStyleSheet(theme.button_style())
+            button.setFixedSize(28, 28)
+            button.setIconSize(QSize(16, 16))
 
         apply_icon_hover(self.expand_btn, theme, "fa5s.window-maximize")
         apply_icon_hover(self.save_btn, theme, "fa5s.download")
@@ -718,8 +717,9 @@ class MainWindow(QMainWindow):
         )
         self.file_path_label.setMargin(4)
         self.browse_button = QPushButton("Browse")
+        self.browse_button.setIconSize(QSize(16, 16))
         self.browse_button.setFixedHeight(28)
-        self.browse_button.setFixedWidth(72)
+        self.browse_button.setFixedWidth(90)
         self.browse_button.clicked.connect(self.browse_file)
         file_bar.addWidget(self.file_path_label, 1)
         file_bar.addSpacing(8)
@@ -787,6 +787,7 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.left_sep_bottom)
 
         self.plot_btn = QPushButton("Plot FFT")
+        self.plot_btn.setIconSize(QSize(16, 16))
         self.plot_btn.setFixedHeight(28)
         self.plot_btn.clicked.connect(self.plot_fft)
         self.plot_btn.setContentsMargins(8, 8, 8, 8)
