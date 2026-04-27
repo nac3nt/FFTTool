@@ -339,14 +339,25 @@ class PlotCanvas(QWidget):
             "When disabled, cursor moves freely."
         )
 
+        self.peak_btn = QPushButton()
+        self.peak_btn.setCheckable(True)
+        self.peak_btn.setChecked(False)
+        self.peak_btn.setFixedSize(28, 28)
+        self.peak_btn.setToolTip(
+            "Peak Highlight Mode\n\n"
+            "Marks dominant FFT peaks directly on the plot."
+        )
+
         title_bar.addWidget(self.window_select)
         title_bar.addWidget(self.zero_btn)
         title_bar.addWidget(self.dc_btn)
         title_bar.addWidget(self.snap_btn)
+        title_bar.addWidget(self.peak_btn)
 
         self.window_select.currentTextChanged.connect(self.recompute_and_redraw)
         self.zero_btn.clicked.connect(self.recompute_and_redraw)
         self.dc_btn.clicked.connect(self.recompute_and_redraw)
+        self.peak_btn.clicked.connect(self.redraw_plot)
 
         self.save_btn = QPushButton()
         self.save_btn.setFixedSize(28, 28)
@@ -372,7 +383,7 @@ class PlotCanvas(QWidget):
         layout.setStretchFactor(self.plot_widget, 1)
 
         axis_bar = QHBoxLayout()
-        axis_bar.setSpacing(4)
+        axis_bar.setSpacing(0)
 
         axis_bar.addWidget(QLabel("X:"))
         self.x_min_input = QLineEdit()
@@ -388,7 +399,7 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(QLabel("-"))
         axis_bar.addWidget(self.x_max_input)
         axis_bar.addSpacing(5)
-
+        
         axis_bar.addWidget(QLabel("Y:"))
         self.y_min_input = QLineEdit()
         self.y_max_input = QLineEdit()
@@ -402,6 +413,7 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(self.y_min_input)
         axis_bar.addWidget(QLabel("-"))
         axis_bar.addWidget(self.y_max_input)
+        axis_bar.addSpacing(5)
 
         self.reset_btn = QPushButton()
         self.reset_btn.setFixedSize(28, 28)
@@ -549,7 +561,7 @@ class PlotCanvas(QWidget):
     def apply_theme(self, theme):
         self.window_select.setStyleSheet(theme.input_style())
 
-        for button in (self.zero_btn, self.snap_btn, self.dc_btn, self.save_btn, self.reset_btn,):
+        for button in (self.zero_btn, self.peak_btn, self.snap_btn, self.dc_btn, self.save_btn, self.reset_btn,):
             button.setStyleSheet(theme.button_style())
             button.setIconSize(QSize(16, 16))
 
@@ -558,6 +570,7 @@ class PlotCanvas(QWidget):
         apply_icon_hover(self.save_btn, theme, "fa5s.download")
         apply_icon_hover(self.reset_btn, theme, "fa5s.undo")
         apply_icon_hover(self.snap_btn, theme, "fa5s.magnet")
+        apply_icon_hover(self.peak_btn, theme, "fa5s.mountain")
 
         if hasattr(self, "plot_widget"):
             self.plot_widget.setBackground(theme.plot["panel"])
@@ -829,8 +842,43 @@ class PlotCanvas(QWidget):
             x_range=x_range,
             y_range=y_range,
         )
+
+        if self.peak_btn.isChecked():
+            self.draw_peaks()
+
         self.update_axis_inputs()
         self.setup_crosshair()
+
+    def draw_peaks(self):
+        if self.freqs is None or len(self.freqs) < 3:
+            return
+
+        peaks = []
+
+        for i in range(1, len(self.fft_db) - 1):
+            if self.fft_db[i] > self.fft_db[i - 1] and self.fft_db[i] > self.fft_db[i + 1]:
+                peaks.append((self.fft_db[i], i))
+
+        peaks.sort(reverse=True)
+        peaks = peaks[:5]
+
+        for mag, idx in peaks:
+            x = float(self.freqs[idx])
+            y = float(self.fft_db[idx])
+
+            marker = pg.ScatterPlotItem(
+                [x], [y],
+                size=8,
+                brush=pg.mkBrush(AppTheme.current().colors["accent"])
+            )
+            self.plot_widget.addItem(marker)
+
+            label = pg.TextItem(
+                f"{x:.1f} Hz",
+                anchor=(0.5, 1.4)
+            )
+            label.setPos(x, y)
+            self.plot_widget.addItem(label)
 
     def plot_fft(self, signal, signal_name, sampling_rate, window_type=None, zero_pad=None, remove_dc=None,):
         self.raw_signal = np.asarray(signal, dtype=float)
