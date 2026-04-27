@@ -229,8 +229,42 @@ class AppTheme:
                 border-radius: 4px;
                 padding: 4px;
             }}
+
+            QLineEdit {{
+                background-color: {self.colors['surface']};
+                color: {self.colors['text']};
+                border: 1px solid {self.colors['border']};
+                border-radius: 4px;
+                padding: 3px 6px;
+            }}
+
+            QLineEdit:focus {{
+                border: 1px solid {self.colors['accent']};
+            }}
         """
     
+    def combo_style(self):
+        return f"""
+        QComboBox {{
+            background-color: {self.colors['surface']};
+            color: {self.colors['text']};
+            border: 1px solid {self .colors['border']};
+            border-radius: 4px;
+            padding: 4px 8px;
+        }}
+
+        QComboBox::drop-down {{
+            border: none;
+            width: 20px;
+        }}
+
+        QComboBox QAbstractItemView {{
+            background-color: {self.colors['surface']};
+            color: {self.colors['text']};
+            selection-background-color: {self.colors['accent']};
+        }}
+        """
+
     def segmented_button_style(self, position):
         radius = {
             "first": "4px 0 0 4px",
@@ -573,7 +607,12 @@ class PlotCanvas(QWidget):
         return harmonics
 
     def apply_theme(self, theme):
-        self.window_select.setStyleSheet(theme.input_style())
+        self.window_select.setStyleSheet(theme.combo_style())
+
+        self.x_min_input.setStyleSheet(theme.input_style())
+        self.x_max_input.setStyleSheet(theme.input_style())
+        self.y_min_input.setStyleSheet(theme.input_style())
+        self.y_max_input.setStyleSheet(theme.input_style())
 
         for button in (self.zero_btn, self.peak_btn, self.snap_btn, self.dc_btn, self.save_btn, self.reset_btn,):
             button.setStyleSheet(theme.button_style())
