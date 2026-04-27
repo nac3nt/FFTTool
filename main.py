@@ -864,33 +864,70 @@ class PlotCanvas(QWidget):
         self.setup_crosshair()
 
     def draw_peaks(self):
-        if self.freqs is None or len(self.freqs) < 3:
+        if self.freqs is None or len(self.freqs) < 5:
             return
 
-        peaks = []
+        freqs = self.freqs
+        mags = self.fft_db
 
-        for i in range(1, len(self.fft_db) - 1):
-            if self.fft_db[i] > self.fft_db[i - 1] and self.fft_db[i] > self.fft_db[i + 1]:
-                peaks.append((self.fft_db[i], i))
+        peak_candidates = []
 
-        peaks.sort(reverse=True)
-        peaks = peaks[:5]
+        max_mag = float(np.max(mags))
+        threshold = max_mag - 40.0
 
-        for mag, idx in peaks:
-            x = float(self.freqs[idx])
-            y = float(self.fft_db[idx])
+        for i in range(1, len(mags) - 1):
+            if mags[i] < threshold:
+                continue
+
+            if mags[i] > mags[i - 1] and mags[i] > mags[i + 1]:
+                peak_candidates.append((float(mags[i]), i))
+
+        peak_candidates.sort(reverse=True)
+
+        selected = []
+
+        freq_span = float(freqs[-1] - freqs[0])
+        min_spacing_hz = max(freq_span * 0.005, 0.5)
+
+        for mag, idx in peak_candidates:
+            f = float(freqs[idx])
+
+            too_close = False
+
+            for _, used_idx in selected:
+                used_f = float(freqs[used_idx])
+
+                if abs(f - used_f) < min_spacing_hz:
+                    too_close = True
+                    break
+
+            if not too_close:
+                selected.append((mag, idx))
+
+            if len(selected) >= 5:
+                break
+
+        theme = AppTheme.current()
+        accent = theme.colors["accent"]
+
+        for mag, idx in selected:
+            x = float(freqs[idx])
+            y = float(mags[idx])
 
             marker = pg.ScatterPlotItem(
                 [x], [y],
                 size=8,
-                brush=pg.mkBrush(AppTheme.current().colors["accent"])
+                brush=pg.mkBrush(accent),
+                pen=pg.mkPen(accent)
             )
+
             self.plot_widget.addItem(marker)
 
             label = pg.TextItem(
                 f"{x:.1f} Hz",
-                anchor=(0.5, 1.4)
+                anchor=(0.5, 1.3)
             )
+
             label.setPos(x, y)
             self.plot_widget.addItem(label)
 
