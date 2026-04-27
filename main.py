@@ -1,3 +1,4 @@
+import os
 import sys
 import numpy as np
 import pandas as pd
@@ -25,6 +26,14 @@ from PyQt6.QtWidgets import (
 )
 
 pg.setConfigOptions(antialias=False)
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 def color_hex(color):
     return color.name(QColor.NameFormat.HexRgb)
@@ -1675,10 +1684,21 @@ class MainWindow(QMainWindow):
             self.render_page()
 
 def main():
+    import ctypes
+
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+        "Prince.FFTSignalAnalyzer.1.0"
+    )
+
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("icon.ico"))
+
+    icon = QIcon(resource_path("icon.ico"))
+    app.setWindowIcon(icon)
+
     window = MainWindow()
+    window.setWindowIcon(icon)
     window.show()
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
