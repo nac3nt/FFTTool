@@ -477,11 +477,11 @@ class PlotCanvas(QWidget):
         self.h_line.hide()
 
     def recompute_and_redraw(self):
-        if not hasattr(self, "raw_signal"):
+        if self.raw_signal is None:
             return
 
-        if self.raw_signal is None or self.sampling_rate is None:
-            return
+        vb = self.plot_widget.getPlotItem().vb
+        x_range, y_range = vb.viewRange()
 
         self.freqs, self.fft_db = self.compute_spectrum(
             self.raw_signal,
@@ -492,6 +492,14 @@ class PlotCanvas(QWidget):
         )
 
         self.redraw_plot()
+
+        self.plot_widget.setXRange(
+            x_range[0], x_range[1], padding=0
+        )
+
+        self.plot_widget.setYRange(
+            y_range[0], y_range[1], padding=0
+        )
 
     def detect_harmonics(self, tolerance=0.05):
         if self.peak_indices is None or len(self.peak_indices) < 2:
@@ -836,6 +844,20 @@ class PlotCanvas(QWidget):
         self.title_label.setText(signal_name)
 
         self.redraw_plot()
+
+        if self.current_x_range is not None:
+            self.plot_widget.setXRange(
+                self.current_x_range[0],
+                self.current_x_range[1],
+                padding=0
+            )
+
+        if self.current_y_range is not None:
+            self.plot_widget.setYRange(
+                self.current_y_range[0],
+                self.current_y_range[1],
+                padding=0
+            )
 
 class MainWindow(QMainWindow):
     def __init__(self):
