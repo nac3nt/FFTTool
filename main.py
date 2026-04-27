@@ -1088,11 +1088,33 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(scroll_area)
         left_layout.setStretchFactor(scroll_area, 1)
 
-        self.left_sep_bottom = QFrame()
-        self.left_sep_bottom.setFrameShape(QFrame.Shape.HLine)
-        self.left_sep_bottom.setFrameShadow(QFrame.Shadow.Plain)
-        self.left_sep_bottom.setFixedHeight(1)
-        left_layout.addWidget(self.left_sep_bottom)
+        self.left_sep_bottom1 = QFrame()
+        self.left_sep_bottom1.setFrameShape(QFrame.Shape.HLine)
+        self.left_sep_bottom1.setFrameShadow(QFrame.Shadow.Plain)
+        self.left_sep_bottom1.setFixedHeight(1)
+        left_layout.addWidget(self.left_sep_bottom1)
+
+        self.fs_box = QWidget()
+        fs_layout = QVBoxLayout(self.fs_box)
+        fs_layout.setContentsMargins(8, 8, 8, 8)
+        fs_layout.setSpacing(2)
+
+        self.fs_label = QLabel("Sampling rate")
+        self.fs_value = QLabel("N/A")
+
+        self.fs_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.fs_value.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        fs_layout.addWidget(self.fs_label)
+        fs_layout.addWidget(self.fs_value)
+
+        left_layout.addWidget(self.fs_box)
+
+        self.left_sep_bottom2 = QFrame()
+        self.left_sep_bottom2.setFrameShape(QFrame.Shape.HLine)
+        self.left_sep_bottom2.setFrameShadow(QFrame.Shadow.Plain)
+        self.left_sep_bottom2.setFixedHeight(1)
+        left_layout.addWidget(self.left_sep_bottom2)
 
         self.plot_btn = QPushButton("Plot FFT")
         self.plot_btn.setIconSize(QSize(16, 16))
@@ -1238,7 +1260,8 @@ class MainWindow(QMainWindow):
         for separator in (
             self.h_separator,
             self.left_sep_top,
-            self.left_sep_bottom,
+            self.left_sep_bottom1,
+            self.left_sep_bottom2,
             self.v_separator,
             self.top_sep,
         ):
@@ -1275,6 +1298,17 @@ class MainWindow(QMainWindow):
                 background-color: {theme.colors["accent_hover"]};
             }}
         """)
+
+        self.fs_label.setStyleSheet(
+            f"color: {theme.colors['muted']};"
+            "font-size: 11px;"
+        )
+
+        self.fs_value.setStyleSheet(
+            f"color: {theme.colors['accent']};"
+            "font-size: 11px;"
+            "font-weight: 700;"
+        )
 
         apply_icon_hover(self.browse_button, theme, "fa5s.folder-open")
         apply_icon_hover(self.plot_btn, theme, "fa5s.chart-line")
@@ -1339,7 +1373,14 @@ class MainWindow(QMainWindow):
             self.df = df
             self.sampling_rate = 1.0 / time_step
             self.reset_analysis_state()
-            print(f"Sampling rate detected: {self.sampling_rate} Hz")
+
+            if abs(self.sampling_rate - round(self.sampling_rate)) < 0.01:
+                fs_display = f"{round(self.sampling_rate):,}"
+            else:
+                fs_display = f"{self.sampling_rate:,.2f}"
+
+            self.fs_value.setText(f"{fs_display} Hz")
+
             self.populate_signals()
             self.left_panel.setVisible(True)
             self.v_separator.setVisible(True)
