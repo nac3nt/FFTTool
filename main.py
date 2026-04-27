@@ -41,7 +41,7 @@ def apply_icon_hover(button, theme, icon_name):
     import qtawesome as qta
 
     def set_default():
-        button.setIcon(qta.icon(icon_name, color=theme.colors["text"]))
+        button.setIcon(qta.icon(icon_name, color=theme.colors["text_primary"]))
 
     def set_active():
         button.setIcon(qta.icon(icon_name, color=theme.accent_text))
@@ -124,10 +124,6 @@ class AppTheme:
             "lg": 16,
         }
 
-        self.colors["panel"] = self.colors["surface"]
-        self.colors["text"] = self.colors["text_primary"]
-        self.colors["muted"] = self.colors["text_secondary"]
-
     @staticmethod
     def current():
         import winreg
@@ -147,10 +143,10 @@ class AppTheme:
     def icon(self, name):
         return qta.icon(
             name,
-            color=self.colors["text"],
+            color=self.colors["text_primary"],
             color_active=self.accent_text,
             color_selected=self.accent_text,
-            color_disabled=self.colors["muted"],
+            color_disabled=self.colors["text_secondary"],
         )
 
     def icon_active(self, name):
@@ -232,7 +228,7 @@ class AppTheme:
 
             QLineEdit {{
                 background-color: {self.colors['surface']};
-                color: {self.colors['text']};
+                color: {self.colors['text_primary']};
                 border: 1px solid {self.colors['border']};
                 border-radius: 4px;
                 padding: 3px 6px;
@@ -247,7 +243,7 @@ class AppTheme:
         return f"""
         QComboBox {{
             background-color: {self.colors['surface']};
-            color: {self.colors['text']};
+            color: {self.colors['text_primary']};
             border: 1px solid {self .colors['border']};
             border-radius: 4px;
             padding: 4px 8px;
@@ -260,7 +256,7 @@ class AppTheme:
 
         QComboBox QAbstractItemView {{
             background-color: {self.colors['surface']};
-            color: {self.colors['text']};
+            color: {self.colors['text_primary']};
             selection-background-color: {self.colors['accent']};
         }}
         """
@@ -1315,8 +1311,8 @@ class MainWindow(QMainWindow):
 
         self.aa_btn.setStyleSheet(f"""
             QPushButton {{
-                color: {theme.colors["text"]};
-                background-color: {theme.colors["panel"]};
+                color: {theme.colors["text_primary"]};
+                background-color: {theme.colors["surface"]};
                 border: 1px solid {theme.colors["border"]};
                 border-radius: 4px;
             }}
@@ -1339,7 +1335,7 @@ class MainWindow(QMainWindow):
         """)
 
         self.fs_label.setStyleSheet(
-            f"color: {theme.colors['muted']};"
+            f"color: {theme.colors['text_secondary']};"
             "font-size: 11px;"
         )
 
