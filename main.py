@@ -357,7 +357,7 @@ class PlotCanvas(QWidget):
         self.window_select.currentTextChanged.connect(self.recompute_and_redraw)
         self.zero_btn.clicked.connect(self.recompute_and_redraw)
         self.dc_btn.clicked.connect(self.recompute_and_redraw)
-        self.peak_btn.clicked.connect(self.redraw_plot)
+        self.peak_btn.clicked.connect(self.redraw_with_preserved_zoom)
 
         self.save_btn = QPushButton()
         self.save_btn.setFixedSize(28, 28)
@@ -399,7 +399,7 @@ class PlotCanvas(QWidget):
         axis_bar.addWidget(QLabel("-"))
         axis_bar.addWidget(self.x_max_input)
         axis_bar.addSpacing(5)
-        
+
         axis_bar.addWidget(QLabel("Y:"))
         self.y_min_input = QLineEdit()
         self.y_max_input = QLineEdit()
@@ -423,6 +423,20 @@ class PlotCanvas(QWidget):
         axis_bar.addStretch()
         layout.addLayout(axis_bar)
         self.apply_theme(AppTheme.current())
+
+    def redraw_with_preserved_zoom(self):
+        vb = self.plot_widget.getPlotItem().vb
+        x_range, y_range = vb.viewRange()
+
+        self.redraw_plot()
+
+        self.plot_widget.setXRange(
+            x_range[0], x_range[1], padding=0
+        )
+
+        self.plot_widget.setYRange(
+            y_range[0], y_range[1], padding=0
+        )
 
     def mouse_clicked(self, evt):
         vb = self.plot_widget.getPlotItem().vb
