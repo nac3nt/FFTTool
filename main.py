@@ -325,9 +325,21 @@ class PlotCanvas(QWidget):
             "Useful when baseline offset creates a strong 0 Hz peak."
         )
 
+        self.snap_btn = QPushButton()
+        self.snap_btn.setCheckable(True)
+        self.snap_btn.setChecked(False)
+        self.snap_btn.setFixedSize(28, 28)
+        self.snap_btn.setToolTip(
+            "Snap Cursor to FFT Bins\n\n"
+            "When enabled, cursor readout locks to nearest FFT frequency bin.\n"
+            "Useful for precise peak inspection.\n\n"
+            "When disabled, cursor moves freely."
+        )
+
         title_bar.addWidget(self.window_select)
         title_bar.addWidget(self.zero_btn)
         title_bar.addWidget(self.dc_btn)
+        title_bar.addWidget(self.snap_btn)
 
         self.window_select.currentTextChanged.connect(self.recompute_and_redraw)
         self.zero_btn.clicked.connect(self.recompute_and_redraw)
@@ -343,7 +355,7 @@ class PlotCanvas(QWidget):
         self.save_btn.setToolTip("Save plot as image")
         self.save_btn.clicked.connect(self.save_plot)
 
-        title_bar.addWidget(self.expand_btn)
+        # title_bar.addWidget(self.expand_btn)
         title_bar.addWidget(self.save_btn)
         layout.addLayout(title_bar)
 
@@ -402,6 +414,9 @@ class PlotCanvas(QWidget):
         self.apply_theme(AppTheme.current())
 
     def mouse_moved(self, evt):
+        if self.freqs is None or len(self.freqs) == 0:
+            return
+
         pos = evt[0]
 
         vb = self.plot_widget.getPlotItem().vb
@@ -413,8 +428,17 @@ class PlotCanvas(QWidget):
 
         point = vb.mapSceneToView(pos)
 
-        x = point.x()
-        y = point.y()
+        x_mouse = float(point.x())
+        y_mouse = float(point.y())
+
+        if self.snap_btn.isChecked():
+            idx = int(np.abs(self.freqs - x_mouse).argmin())
+
+            x = float(self.freqs[idx])
+            y = float(self.fft_db[idx])
+        else:
+            x = x_mouse
+            y = y_mouse
 
         self.v_line.setPos(x)
         self.h_line.setPos(y)
@@ -425,7 +449,7 @@ class PlotCanvas(QWidget):
         self.title_label.setText(
             f"{x:,.2f} Hz | {y:,.2f} dB"
         )
-
+        
     def hide_crosshair(self):
         if hasattr(self, "v_line"):
             self.v_line.hide()
@@ -494,7 +518,7 @@ class PlotCanvas(QWidget):
     def apply_theme(self, theme):
         self.window_select.setStyleSheet(theme.input_style())
 
-        for button in (self.zero_btn, self.dc_btn, self.expand_btn, self.save_btn, self.reset_btn,):
+        for button in (self.zero_btn, self.snap_btn, self.dc_btn, self.expand_btn, self.save_btn, self.reset_btn,):
             button.setStyleSheet(theme.button_style())
             button.setIconSize(QSize(16, 16))
 
@@ -503,6 +527,7 @@ class PlotCanvas(QWidget):
         apply_icon_hover(self.expand_btn, theme, "fa5s.window-maximize")
         apply_icon_hover(self.save_btn, theme, "fa5s.download")
         apply_icon_hover(self.reset_btn, theme, "fa5s.undo")
+        apply_icon_hover(self.snap_btn, theme, "fa5s.magnet")
 
         if hasattr(self, "plot_widget"):
             self.plot_widget.setBackground(theme.plot["panel"])
