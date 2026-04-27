@@ -276,6 +276,9 @@ class PlotCanvas(QWidget):
         self.signal_name = None
         self.default_x_range = (0.0, 1.0)
         self.default_y_range = (-1.0, 1.0)
+        self.cursor_locked = False
+        self.lock_x = None
+        self.lock_y = None
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumWidth(0)
@@ -360,7 +363,9 @@ class PlotCanvas(QWidget):
             rateLimit=60,
             slot=self.mouse_moved,
         )
-                
+
+        self.plot_widget.scene().sigMouseClicked.connect(self.mouse_clicked)
+
         self.plot_item = self.plot_widget.getPlotItem()
         self.view_box = self.plot_item.getViewBox()
         layout.addWidget(self.plot_widget)
@@ -407,7 +412,31 @@ class PlotCanvas(QWidget):
         layout.addLayout(axis_bar)
         self.apply_theme(AppTheme.current())
 
+    def mouse_clicked(self, evt):
+        vb = self.plot_widget.getPlotItem().vb
+        pos = evt.scenePos()
+
+        if not vb.sceneBoundingRect().contains(pos):
+            return
+
+        if self.cursor_locked:
+            self.cursor_locked = False
+            self.lock_x = None
+            self.lock_y = None
+            return
+
+        self.cursor_locked = True
+        self.lock_x = self.v_line.value()
+        self.lock_y = self.h_line.value()
+
+        self.title_label.setText(
+            f"Locked {self.lock_x:,.2f} Hz | {self.lock_y:,.2f} dB"
+        )
+
     def mouse_moved(self, evt):
+        if self.cursor_locked:
+            return
+
         if self.freqs is None or len(self.freqs) == 0:
             return
 
