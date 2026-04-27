@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -282,19 +283,61 @@ class PlotCanvas(QWidget):
         layout.setSpacing(2)
 
         title_bar = QHBoxLayout()
-        title_bar.setContentsMargins(4, 4, 4, 0)
+        title_bar.setContentsMargins(0, 0, 0, 0)
+        title_bar.setSpacing(6)
 
         self.title_label = QLabel("")
         title_bar.addWidget(self.title_label)
-        title_bar.addStretch()
+
+        self.window_select = QComboBox()
+        self.window_select.addItems(["Hann", "Hamming", "Blackman"])
+        self.window_select.setCurrentText("Hann")
+        self.window_select.setFixedHeight(28)
+        self.window_select.setFixedWidth(110)
+        self.window_select.setToolTip(
+            "FFT Window Function\n\n"
+            "Controls spectral leakage behavior.\n"
+            "Hann: balanced default\n"
+            "Hamming: stronger main peak amplitude\n"
+            "Blackman: best leakage suppression"
+        )
+
+        self.zero_btn = QPushButton()
+        self.zero_btn.setCheckable(True)
+        self.zero_btn.setChecked(False)
+        self.zero_btn.setFixedSize(28, 28)
+        self.zero_btn.setToolTip(
+            "Zero Padding\n\n"
+            "Adds zeros before FFT to increase frequency bin density.\n"
+            "Makes peaks smoother and easier to estimate.\n"
+            "Does not add real signal information."
+        )
+
+        self.dc_btn = QPushButton()
+        self.dc_btn.setCheckable(True)
+        self.dc_btn.setChecked(True)
+        self.dc_btn.setFixedSize(28, 28)
+        self.dc_btn.setToolTip(
+            "Remove DC Offset\n\n"
+            "Subtracts signal mean before FFT.\n"
+            "Useful when baseline offset creates a strong 0 Hz peak."
+        )
+
+        title_bar.addWidget(self.window_select)
+        title_bar.addWidget(self.zero_btn)
+        title_bar.addWidget(self.dc_btn)
+
+        self.window_select.currentTextChanged.connect(self.recompute_and_redraw)
+        self.zero_btn.clicked.connect(self.recompute_and_redraw)
+        self.dc_btn.clicked.connect(self.recompute_and_redraw)
 
         self.expand_btn = QPushButton()
-        self.expand_btn.setFixedSize(28, 24)
+        self.expand_btn.setFixedSize(28, 28)
         self.expand_btn.setToolTip("Expand plot")
         self.expand_btn.clicked.connect(self.expand_plot)
 
         self.save_btn = QPushButton()
-        self.save_btn.setFixedSize(28, 24)
+        self.save_btn.setFixedSize(28, 28)
         self.save_btn.setToolTip("Save plot as image")
         self.save_btn.clicked.connect(self.save_plot)
 
@@ -322,9 +365,9 @@ class PlotCanvas(QWidget):
         self.x_max_input.returnPressed.connect(self.apply_axis_limits)
 
         axis_bar.addWidget(self.x_min_input)
-        axis_bar.addWidget(QLabel("to"))
+        axis_bar.addWidget(QLabel("-"))
         axis_bar.addWidget(self.x_max_input)
-        axis_bar.addSpacing(10)
+        axis_bar.addSpacing(5)
 
         axis_bar.addWidget(QLabel("Y:"))
         self.y_min_input = QLineEdit()
@@ -337,17 +380,34 @@ class PlotCanvas(QWidget):
         self.y_max_input.returnPressed.connect(self.apply_axis_limits)
 
         axis_bar.addWidget(self.y_min_input)
-        axis_bar.addWidget(QLabel("to"))
+        axis_bar.addWidget(QLabel("-"))
         axis_bar.addWidget(self.y_max_input)
 
         self.reset_btn = QPushButton()
-        self.reset_btn.setFixedSize(28, 24)
+        self.reset_btn.setFixedSize(28, 28)
         self.reset_btn.setToolTip("Reset axis limits")
         self.reset_btn.clicked.connect(self.reset_axis_limits)
         axis_bar.addWidget(self.reset_btn)
         axis_bar.addStretch()
         layout.addLayout(axis_bar)
         self.apply_theme(AppTheme.current())
+
+    def recompute_and_redraw(self):
+        if not hasattr(self, "raw_signal"):
+            return
+
+        if self.raw_signal is None or self.sampling_rate is None:
+            return
+
+        self.freqs, self.fft_db = self.compute_spectrum(
+            self.raw_signal,
+            self.sampling_rate,
+            window_type=self.window_select.currentText(),
+            zero_pad=self.zero_btn.isChecked(),
+            remove_dc=self.dc_btn.isChecked(),
+        )
+
+        self.redraw_plot()
 
     def detect_harmonics(self, tolerance=0.05):
         if self.peak_indices is None or len(self.peak_indices) < 2:
@@ -366,18 +426,14 @@ class PlotCanvas(QWidget):
         return harmonics
 
     def apply_theme(self, theme):
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {theme.plot["panel"]};
-                border: 1px solid {theme.colors["border"]};
-            }}
-        """)
+        self.window_select.setStyleSheet(theme.input_style())
 
-        for button in (self.expand_btn, self.save_btn, self.reset_btn):
+        for button in (self.zero_btn, self.dc_btn, self.expand_btn, self.save_btn, self.reset_btn,):
             button.setStyleSheet(theme.button_style())
-            button.setFixedSize(28, 28)
             button.setIconSize(QSize(16, 16))
 
+        apply_icon_hover(self.zero_btn, theme, "fa6s.0")
+        apply_icon_hover(self.dc_btn, theme, "msc.diff-removed")
         apply_icon_hover(self.expand_btn, theme, "fa5s.window-maximize")
         apply_icon_hover(self.save_btn, theme, "fa5s.download")
         apply_icon_hover(self.reset_btn, theme, "fa5s.undo")
@@ -536,23 +592,40 @@ class PlotCanvas(QWidget):
     def minimumSizeHint(self):
         return QSize(360, 220)
 
-    def compute_spectrum(self, signal, sampling_rate):
-        samples = np.asarray(signal, dtype=float)
-        if samples.size < 2:
-            raise ValueError("Signal must contain at least two samples")
+    def compute_spectrum(self, signal, sampling_rate, window_type="Hann", zero_pad=False, remove_dc=True,):
+        signal = np.asarray(signal, dtype=float)
 
-        centered = samples - np.mean(samples)
-        window = windows.hann(samples.size, sym=False)
-        windowed = centered * window
+        if signal.size == 0:
+            return np.array([]), np.array([])
 
-        fft_vals = np.fft.rfft(windowed)
+        if remove_dc:
+            signal = signal - np.mean(signal)
 
-        scale = np.sum(window) / 2
-        fft_mag = np.abs(fft_vals) / scale
+        N = len(signal)
 
-        fft_db = 20 * np.log10(fft_mag + 1e-12)
-        freqs = np.fft.rfftfreq(samples.size, d=1.0 / sampling_rate)
-        return freqs, fft_db
+        if window_type == "Hann":
+            window = np.hanning(N)
+        elif window_type == "Hamming":
+            window = np.hamming(N)
+        elif window_type == "Blackman":
+            window = np.blackman(N)
+        else:
+            window = np.ones(N)
+
+        signal = signal * window
+
+        if zero_pad:
+            N_fft = int(2 ** np.ceil(np.log2(N))) * 2
+        else:
+            N_fft = N
+
+        fft_vals = np.fft.rfft(signal, n=N_fft)
+        freqs = np.fft.rfftfreq(N_fft, d=1.0 / sampling_rate)
+
+        magnitude = np.abs(fft_vals)
+        magnitude_db = 20 * np.log10(magnitude + 1e-12)
+
+        return freqs, magnitude_db
 
     def find_dominant_peaks(self, fft_db, count=3):
         if fft_db is None or len(fft_db) == 0:
@@ -663,36 +736,45 @@ class PlotCanvas(QWidget):
         )
         self.update_axis_inputs()
 
-    def plot_fft(self, signal, signal_name, sampling_rate):
-        self.sampling_rate = sampling_rate
+    def plot_fft(self, signal, signal_name, sampling_rate, window_type=None, zero_pad=None, remove_dc=None,):
+        self.raw_signal = np.asarray(signal, dtype=float)
         self.signal_name = signal_name
+        self.sampling_rate = sampling_rate
+
+        if window_type is None:
+            window_type = self.window_select.currentText()
+
+        if zero_pad is None:
+            zero_pad = self.zero_btn.isChecked()
+
+        if remove_dc is None:
+            remove_dc = self.dc_btn.isChecked()
+
+        self.freqs, self.fft_db = self.compute_spectrum(
+            self.raw_signal,
+            sampling_rate,
+            window_type=window_type,
+            zero_pad=zero_pad,
+            remove_dc=remove_dc,
+        )
+
+        if len(self.freqs) == 0:
+            return
+
+        self.current_x_range = (
+            float(self.freqs[0]),
+            float(self.freqs[-1]),
+        )
+
+        self.current_y_range = (
+            float(np.min(self.fft_db)),
+            float(np.max(self.fft_db)),
+        )
+
+        self.default_x_range = self.current_x_range
+        self.default_y_range = self.current_y_range
+
         self.title_label.setText(signal_name)
-        self.freqs, self.fft_db = self.compute_spectrum(signal, sampling_rate)
-        self.freq_resolution = sampling_rate / len(signal)
-        self.peak_indices = self.find_dominant_peaks(self.fft_db)
-
-        harmonics = self.detect_harmonics()
-
-        if len(self.peak_indices):
-            dom_freq = self.freqs[self.peak_indices[0]]
-            dom_amp = self.fft_db[self.peak_indices[0]]
-        else:
-            dom_freq, dom_amp = None, None
-
-        print("\n=== FFT Analysis ===")
-        if dom_freq is not None:
-            print(f"Dominant Frequency: {dom_freq:.2f} Hz")
-            print(f"Amplitude: {dom_amp:.2f} dB")
-
-        if harmonics:
-            print("Harmonics:")
-            for f, n in harmonics:
-                print(f"  {f:.2f} Hz ({n}x)")
-
-        print(f"Resolution: {self.freq_resolution:.2f} Hz")
-        print("====================\n")
-        self.default_x_range = (float(self.freqs[0]), float(self.freqs[-1]))
-        self.default_y_range = self.default_y_limits()
 
         self.redraw_plot()
 
