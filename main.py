@@ -83,6 +83,7 @@ class AppTheme:
                 "border": "#2f2f2f",
                 "danger": "#e81123",
                 "success": "#107c10",
+                "crosshair": "#ffffff",
             }
         else:
             self.colors = {
@@ -96,6 +97,7 @@ class AppTheme:
                 "border": "#e5e5e5",
                 "danger": "#d13438",
                 "success": "#107c10",
+                "crosshair": "#000000",
             }
 
         self.accent_text = "#ffffff"
@@ -315,7 +317,7 @@ class PlotCanvas(QWidget):
 
         self.dc_btn = QPushButton()
         self.dc_btn.setCheckable(True)
-        self.dc_btn.setChecked(True)
+        self.dc_btn.setChecked(False)
         self.dc_btn.setFixedSize(28, 28)
         self.dc_btn.setToolTip(
             "Remove DC Offset\n\n"
@@ -346,6 +348,13 @@ class PlotCanvas(QWidget):
         layout.addLayout(title_bar)
 
         self.plot_widget = self.create_plot_widget(sync_inputs=True)
+
+        self.proxy = pg.SignalProxy(
+            self.plot_widget.scene().sigMouseMoved,
+            rateLimit=60,
+            slot=self.mouse_moved,
+        )
+                
         self.plot_item = self.plot_widget.getPlotItem()
         self.view_box = self.plot_item.getViewBox()
         layout.addWidget(self.plot_widget)
@@ -391,6 +400,63 @@ class PlotCanvas(QWidget):
         axis_bar.addStretch()
         layout.addLayout(axis_bar)
         self.apply_theme(AppTheme.current())
+
+    def mouse_moved(self, evt):
+        pos = evt[0]
+
+        vb = self.plot_widget.getPlotItem().vb
+        view_rect = vb.sceneBoundingRect()
+
+        if not view_rect.contains(pos):
+            self.hide_crosshair()
+            return
+
+        point = vb.mapSceneToView(pos)
+
+        x = point.x()
+        y = point.y()
+
+        self.v_line.setPos(x)
+        self.h_line.setPos(y)
+
+        self.v_line.show()
+        self.h_line.show()
+
+        self.title_label.setText(
+            f"{x:,.2f} Hz | {y:,.2f} dB"
+        )
+
+    def hide_crosshair(self):
+        if hasattr(self, "v_line"):
+            self.v_line.hide()
+
+        if hasattr(self, "h_line"):
+            self.h_line.hide()
+
+        self.title_label.setText(self.signal_name)
+
+    def setup_crosshair(self):
+        plot_item = self.plot_widget.getPlotItem()
+        theme = AppTheme.current()
+        accent = theme.colors["crosshair"]
+
+        self.v_line = pg.InfiniteLine(
+            angle=90,
+            movable=False,
+            pen=pg.mkPen(accent, width=1)
+        )
+
+        self.h_line = pg.InfiniteLine(
+            angle=0,
+            movable=False,
+            pen=pg.mkPen(accent, width=1)
+        )
+
+        plot_item.addItem(self.v_line, ignoreBounds=True)
+        plot_item.addItem(self.h_line, ignoreBounds=True)
+
+        self.v_line.hide()
+        self.h_line.hide()
 
     def recompute_and_redraw(self):
         if not hasattr(self, "raw_signal"):
@@ -735,6 +801,7 @@ class PlotCanvas(QWidget):
             y_range=y_range,
         )
         self.update_axis_inputs()
+        self.setup_crosshair()
 
     def plot_fft(self, signal, signal_name, sampling_rate, window_type=None, zero_pad=None, remove_dc=None,):
         self.raw_signal = np.asarray(signal, dtype=float)
