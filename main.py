@@ -1,21 +1,16 @@
 import sys
-from pathlib import Path
-from turtle import position
-from unicodedata import name
-
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import qtawesome as qta
-from scipy.signal import find_peaks, windows
+from scipy.signal import find_peaks
 from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QPalette
+from PyQt6.QtGui import QColor, QFont, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -1681,6 +1676,7 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("icon.ico"))
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
