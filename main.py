@@ -345,17 +345,11 @@ class PlotCanvas(QWidget):
         self.zero_btn.clicked.connect(self.recompute_and_redraw)
         self.dc_btn.clicked.connect(self.recompute_and_redraw)
 
-        self.expand_btn = QPushButton()
-        self.expand_btn.setFixedSize(28, 28)
-        self.expand_btn.setToolTip("Expand plot")
-        self.expand_btn.clicked.connect(self.expand_plot)
-
         self.save_btn = QPushButton()
         self.save_btn.setFixedSize(28, 28)
         self.save_btn.setToolTip("Save plot as image")
         self.save_btn.clicked.connect(self.save_plot)
 
-        # title_bar.addWidget(self.expand_btn)
         title_bar.addWidget(self.save_btn)
         layout.addLayout(title_bar)
 
@@ -518,13 +512,12 @@ class PlotCanvas(QWidget):
     def apply_theme(self, theme):
         self.window_select.setStyleSheet(theme.input_style())
 
-        for button in (self.zero_btn, self.snap_btn, self.dc_btn, self.expand_btn, self.save_btn, self.reset_btn,):
+        for button in (self.zero_btn, self.snap_btn, self.dc_btn, self.save_btn, self.reset_btn,):
             button.setStyleSheet(theme.button_style())
             button.setIconSize(QSize(16, 16))
 
         apply_icon_hover(self.zero_btn, theme, "fa6s.0")
         apply_icon_hover(self.dc_btn, theme, "msc.diff-removed")
-        apply_icon_hover(self.expand_btn, theme, "fa5s.window-maximize")
         apply_icon_hover(self.save_btn, theme, "fa5s.download")
         apply_icon_hover(self.reset_btn, theme, "fa5s.undo")
         apply_icon_hover(self.snap_btn, theme, "fa5s.magnet")
@@ -582,32 +575,6 @@ class PlotCanvas(QWidget):
             axis = plot_item.getAxis(axis_name)
             axis.setPen(pg.mkPen(theme.plot["axis"]))
             axis.setTextPen(pg.mkPen(theme.plot["text"]))
-
-    def expand_plot(self):
-        if self.freqs is None or self.fft_db is None:
-            return
-
-        popup = QDialog(self)
-        popup.setWindowTitle(f"FFT - {self.signal_name}")
-        popup.setMinimumSize(900, 600)
-        layout = QVBoxLayout(popup)
-
-        expanded_plot = self.create_plot_widget(sync_inputs=False)
-        x_range, y_range = self.current_ranges()
-        self.populate_plot_widget(
-            expanded_plot,
-            marker_size=12,
-            annotation_fontsize=10,
-            x_range=x_range,
-            y_range=y_range,
-        )
-        layout.addWidget(expanded_plot)
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(popup.close)
-        layout.addWidget(close_btn)
-
-        popup.exec()
 
     def save_plot(self):
         if self.freqs is None or self.fft_db is None:
@@ -1430,6 +1397,7 @@ class MainWindow(QMainWindow):
 
         total_pages = max(1, -(-len(self.selected_signals) // self.plots_per_page))
         self.current_page = min(self.current_page, total_pages - 1)
+
         self.page_label.setText(f"Page {self.current_page + 1} of {total_pages}")
         self.prev_btn.setEnabled(self.current_page > 0)
         self.next_btn.setEnabled(self.current_page < total_pages - 1)
@@ -1438,26 +1406,41 @@ class MainWindow(QMainWindow):
         end = start + self.plots_per_page
         page_signals = self.selected_signals[start:end]
 
-        cols = 2 if self.plots_per_page > 1 else 1
-        row_layout = None
-        for i, signal_name in enumerate(page_signals):
-            if i % cols == 0:
-                row_layout = QHBoxLayout()
-                row_layout.setContentsMargins(0, 0, 0, 0)
-                row_layout.setSpacing(m["md"])
-                self.plot_grid.addLayout(row_layout)
+        count = len(page_signals)
 
-            canvas = PlotCanvas()
-            signal_data = self.df[signal_name].values
-            canvas.plot_fft(signal_data, signal_name, self.sampling_rate)
-            self.canvas_widgets.append(canvas)
-            row_layout.addWidget(canvas, 1)
+        if count == 1:
+            rows = [[0]]
 
-        if len(page_signals) > 1 and len(page_signals) % cols != 0 and row_layout:
-            filler = QWidget()
-            filler.setMinimumWidth(0)
-            filler.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            row_layout.addWidget(filler, 1)
+        elif count == 2:
+            rows = [[0], [1]]
+
+        elif count == 3:
+            rows = [[0, 1], [2]]
+
+        else:
+            rows = [[0, 1], [2, 3]]
+
+        for row in rows:
+            row_layout = QHBoxLayout()
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(m["md"])
+
+            for idx in row:
+                signal_name = page_signals[idx]
+
+                canvas = PlotCanvas()
+                signal_data = self.df[signal_name].values
+                canvas.plot_fft(signal_data, signal_name, self.sampling_rate)
+
+                canvas.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Expanding
+                )
+
+                self.canvas_widgets.append(canvas)
+                row_layout.addWidget(canvas, 1)
+
+            self.plot_grid.addLayout(row_layout, 1)
 
     def prev_page(self):
         if self.current_page > 0:
